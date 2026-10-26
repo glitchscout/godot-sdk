@@ -8,6 +8,8 @@ and the Godot fixture game. The repo root is a Godot project used for developmen
 - `scripts/test.sh` is the test loop: it installs the pinned GdUnit4 (`scripts/install_gdunit4.sh`), runs every
   suite in `tests/` headless and prints `GREEN p/t` or `RED p/t`, then validates every protocol message the SDK
   sent during the tests against the `github.com/glitchscout/protocol` schemas (`tools/schemacheck`).
+- `tools/stepbench` (`go run .` from that directory) is the step-overhead benchmark CI gates on: the median STEP
+  round trip on an empty scene must stay at or under 5 ms.
 - Godot comes from `$GODOT_BIN` or `godot` on PATH and must match `.godot-version`. Bump `.godot-version` and the
   SHA-512 in `scripts/install_godot.sh` together.
 
