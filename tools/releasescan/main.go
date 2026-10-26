@@ -7,15 +7,21 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 )
 
 // markers are strings only the SDK itself carries.
 var markers = []string{"res://addons/glitchscout/", "GlitchscoutSDK", "glitchscout/1", "--glitchscout-endpoint"}
+
+// autoload is the project setting a QA build needs for the SDK to run (the export plugin strips it from
+// builds that leave the addon out).
+const autoload = "autoload/Glitchscout"
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -41,6 +47,8 @@ func run(args []string) error {
 		switch {
 		case *expectSDK && len(hits) == 0:
 			return fmt.Errorf("%s: no SDK found, but this build should contain it", path)
+		case *expectSDK && !hasAutoload(path):
+			return fmt.Errorf("%s: the SDK files are there but its %s setting isn't, so it would never start", path, autoload)
 		case !*expectSDK && len(hits) > 0:
 			return fmt.Errorf("%s: the Glitchscout SDK is in a shipping build: %q", path, hits)
 		}
@@ -49,17 +57,48 @@ func run(args []string) error {
 	return nil
 }
 
-// scan returns the SDK markers found in a file.
+// scan returns the SDK markers found in a pack: an uncompressed .pck or executable, or a .zip export,
+// whose deflated entries are read one by one (their names stand for res:// paths).
 func scan(path string) ([]string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
+	if !bytes.HasPrefix(data, []byte("PK\x03\x04")) {
+		return found(data), nil
+	}
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	all := []byte{}
+	for _, f := range zr.File {
+		all = append(all, "\nres://"+f.Name+"\n"...)
+		rc, err := f.Open()
+		if err != nil {
+			return nil, fmt.Errorf("%s: %s: %w", path, f.Name, err)
+		}
+		b, err := io.ReadAll(rc)
+		_ = rc.Close()
+		if err != nil {
+			return nil, fmt.Errorf("%s: %s: %w", path, f.Name, err)
+		}
+		all = append(all, b...)
+	}
+	return found(all), nil
+}
+
+func found(data []byte) []string {
 	var hits []string
 	for _, m := range markers {
 		if bytes.Contains(data, []byte(m)) {
 			hits = append(hits, m)
 		}
 	}
-	return hits, nil
+	return hits
+}
+
+func hasAutoload(path string) bool {
+	data, err := os.ReadFile(path)
+	return err == nil && bytes.Contains(data, []byte(autoload))
 }

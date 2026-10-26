@@ -9,6 +9,11 @@ const Observation := preload("observe.gd")
 const LogTail := preload("log_tail.gd")
 const MAX_PENDING := 1000
 const MAX_LOGS_PER_FRAME := 200
+const MAX_TAIL_BACKLOG := 2000
+## Longest log message sent; longer ones are cut (frames must stay under the manifest's max_text_frame_bytes).
+const MAX_MESSAGE_CHARS := 8192
+## Largest game event data, as JSON; bigger data is replaced by {"truncated": true, "bytes": n}.
+const MAX_DATA_BYTES := 65536
 
 var sdk: Node
 
@@ -16,6 +21,8 @@ var _pending: Array = []
 var _emitted := {}
 var _bridge: Object = null
 var _tail: LogTail = null
+var _tail_backlog: Array = []
+var _tail_dropped := 0
 
 
 func _init(owner: Node) -> void:
@@ -52,7 +59,9 @@ func event(name: String, data: Dictionary) -> void:
 	_emitted[name] = true
 	var payload := {"kind": "game", "name": name}
 	if not data.is_empty():
-		payload.data = Observation._clean(data)
+		var clean: Variant = Observation._clean(data)
+		var size := JSON.stringify(clean).length()
+		payload.data = clean if size <= MAX_DATA_BYTES else {"truncated": true, "bytes": size}
 	_queue(payload)
 
 
@@ -83,11 +92,28 @@ func flush() -> void:
 		entries = taken[0]
 		dropped = taken[1]
 	elif _tail:
-		entries = _tail.read_new().slice(0, MAX_LOGS_PER_FRAME)
+		_tail_backlog.append_array(_tail.read_new())
+		if _tail_backlog.size() > MAX_TAIL_BACKLOG:
+			_tail_dropped += _tail_backlog.size() - MAX_TAIL_BACKLOG
+			_tail_backlog = _tail_backlog.slice(_tail_backlog.size() - MAX_TAIL_BACKLOG)
+		entries = _tail_backlog.slice(0, MAX_LOGS_PER_FRAME)
+		_tail_backlog = _tail_backlog.slice(MAX_LOGS_PER_FRAME)
+		dropped = _tail_dropped
+		_tail_dropped = 0
 	for e in entries:
-		sdk.send("EVENT", e)
+		sdk.send("EVENT", _fit(e))
 	if dropped > 0:
 		sdk.send("EVENT", {"kind": "log", "level": "warning", "message": "Glitchscout: %d log lines dropped (log flood)" % dropped})
+
+
+## A log entry with its message cut to MAX_MESSAGE_CHARS.
+static func _fit(entry: Dictionary) -> Dictionary:
+	var message := str(entry.get("message", ""))
+	if message.length() <= MAX_MESSAGE_CHARS:
+		return entry
+	var cut := entry.duplicate()
+	cut.message = message.left(MAX_MESSAGE_CHARS) + " … (%d characters cut)" % (message.length() - MAX_MESSAGE_CHARS)
+	return cut
 
 
 func _queue(payload: Dictionary) -> void:

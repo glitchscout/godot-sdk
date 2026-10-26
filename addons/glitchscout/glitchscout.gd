@@ -224,7 +224,8 @@ static func should_enable(endpoint: String, debug: bool, qa: bool) -> bool:
 	return not endpoint.is_empty() and (debug or qa)
 
 
-## Sends a game event, e.g. Glitchscout.event("dialogue_started", {"npc_id": "elder"}).
+## Sends a game event, e.g. gs.event("dialogue_started", {"npc_id": "elder"}) with
+## gs = get_node_or_null("/root/Glitchscout"), so the game still runs in a build without the SDK.
 func event(name: String, data := {}) -> void:
 	_events.event(name, data)
 
@@ -234,7 +235,7 @@ func log_bridge() -> Object:
 	return _events.bridge()
 
 
-## What RELOAD_SCENE (reset tier 1) does: handler(), or get_tree().reload_current_scene() when none is set.
+## What RELOAD_SCENE (reset tier 1) does: handler(), or a fresh instance of the current scene when none is set.
 ## Games whose root node outlives levels set one that rebuilds the current level.
 func set_reset_handler(handler: Callable) -> void:
 	_reset_handler = handler
@@ -246,9 +247,32 @@ func _on_state_ctrl(msg: Dictionary) -> void:
 		return
 	if _reset_handler.is_valid():
 		_reset_handler.call()
-	else:
-		get_tree().reload_current_scene() # takes effect at the end of the frame, like load_scene
+	elif not _reload_current_scene_now():
+		reply_error(msg, "no_scene", "there is no current scene loaded from a file to reload; set a reset handler")
+		return
 	reply(msg, "ACK", {"result": {"tick_frame": tick}})
+
+
+## Swaps the current scene for a fresh instance right away. reload_current_scene() waits for the end of the
+## frame, which a held game only reaches after the next STEP, so an OBSERVE after the ACK would see the old one.
+func _reload_current_scene_now() -> bool:
+	var tree := get_tree()
+	var old := tree.current_scene
+	if old == null or old.scene_file_path.is_empty():
+		return false
+	var packed := load(old.scene_file_path) as PackedScene
+	if packed == null:
+		return false
+	var fresh := packed.instantiate()
+	var parent := old.get_parent()
+	var index := old.get_index()
+	parent.remove_child(old)
+	old.queue_free()
+	parent.add_child(fresh)
+	parent.move_child(fresh, index)
+	tree.current_scene = fresh
+	tree.scene_changed.emit()
+	return true
 
 
 ## Registers a debug command the orchestrator may run (see commands.gd for the handler contract). Only

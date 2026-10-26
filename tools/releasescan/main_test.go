@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/zip"
 	"os"
 	"path/filepath"
 	"testing"
@@ -23,5 +24,48 @@ func TestScan(t *testing.T) {
 	hits, err := scan(dirty)
 	if err != nil || len(hits) != 2 {
 		t.Fatalf("scan(dirty) = %v, %v; want the addon path and the class name", hits, err)
+	}
+}
+
+func TestScanZipPack(t *testing.T) {
+	// A .zip export deflates its files, so the SDK has to be found in the entries, not the raw bytes.
+	path := filepath.Join(t.TempDir(), "game.zip")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw := zip.NewWriter(f)
+	w, err := zw.Create("addons/glitchscout/glitchscout.gdc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = w.Write([]byte("class_name GlitchscoutSDK class_name GlitchscoutSDK class_name GlitchscoutSDK"))
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+	hits, err := scan(path)
+	if err != nil || len(hits) != 2 {
+		t.Fatalf("scan(zip) = %v, %v; want the addon path and the class name", hits, err)
+	}
+}
+
+func TestExpectSDKNeedsTheAutoloadToo(t *testing.T) {
+	// A QA build whose SDK files shipped but whose autoload was stripped can't connect: that's a failure.
+	dir := t.TempDir()
+	noAutoload := filepath.Join(dir, "qa-broken.pck")
+	full := filepath.Join(dir, "qa.pck")
+	files := "GDPC...res://addons/glitchscout/glitchscout.gdc...GlitchscoutSDK"
+	if err := os.WriteFile(noAutoload, []byte(files), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(full, []byte(files+"...autoload/Glitchscout...*res://addons/glitchscout/glitchscout.gd"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := run([]string{"-expect-sdk", noAutoload}); err == nil {
+		t.Error("run(-expect-sdk) passed a QA pack without the Glitchscout autoload")
+	}
+	if err := run([]string{"-expect-sdk", full}); err != nil {
+		t.Errorf("run(-expect-sdk) = %v on a complete QA pack", err)
 	}
 }

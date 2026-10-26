@@ -117,4 +117,3 @@ func _load_save(args: Dictionary) -> Variant:
 	if pos is Array and pos.size() == 3 and player():
 		player().global_position = Vector3(pos[0], pos[1], pos[2])
 	return {"loaded": path}
-

@@ -134,3 +134,51 @@ func test_the_sdk_switches_on_only_for_an_endpoint_in_a_debug_or_qa_build() -> v
 	assert_bool(GlitchscoutSDK.should_enable("ws://127.0.0.1:1/", false, true)).is_true()
 	assert_bool(GlitchscoutSDK.should_enable("ws://127.0.0.1:1/", false, false)).is_false() # a shipping build
 	assert_bool(GlitchscoutSDK.should_enable("", true, true)).is_false()
+
+
+func test_reload_scene_without_a_handler_has_the_fresh_scene_in_place_before_the_ack() -> void:
+	await _ready_sdk()
+	var tree := get_tree()
+	var runner := tree.current_scene
+	var level: Node = load("res://fixture/levels/flat.tscn").instantiate()
+	tree.root.add_child(level)
+	tree.current_scene = level
+	level.set_meta("stale", true)
+	sdk._on_state_ctrl({"id": "r-1", "message_type": "STATE_CTRL", "payload": {"op": "RELOAD_SCENE"}})
+	var now := tree.current_scene # read before any frame passes: what an OBSERVE right after the ACK sees
+	tree.current_scene = runner
+	assert_bool(now != level and is_instance_valid(now) and not now.has_meta("stale")).is_true()
+	assert_str(now.scene_file_path).is_equal("res://fixture/levels/flat.tscn")
+	assert_bool(level.is_inside_tree()).is_false()
+	if is_instance_valid(now) and now != level:
+		now.queue_free()
+	if is_instance_valid(level):
+		level.queue_free()
+
+
+func test_huge_log_lines_and_event_data_are_cut_to_fit_a_frame() -> void:
+	await _ready_sdk()
+	sdk.log_bridge()._log_message("gs-huge " + "x".repeat(600000) + "\n", false)
+	sdk.event("gs_big", {"blob": "y".repeat(600000)})
+	var huge := func(): return _events("log").filter(func(m): return m.payload.message.begins_with("gs-huge"))
+	assert_bool(await pump_until(func(): return not huge.call().is_empty() and not _events("game").is_empty())).is_true()
+	assert_int(huge.call()[0].payload.message.length()).is_less_equal(8300)
+	var big: Dictionary = _events("game")[0].payload
+	assert_bool(big.data.get("truncated", false)).is_true()
+	assert_int(JSON.stringify(big).length()).is_less(GlitchscoutSDK.MAX_TEXT_FRAME_BYTES)
+
+
+func test_log_tail_fallback_keeps_lines_over_the_per_frame_cap() -> void:
+	await _ready_sdk()
+	var path := ProjectSettings.globalize_path("res://reports/tail-flood.log")
+	FileAccess.open(path, FileAccess.WRITE).close()
+	OS.remove_logger(sdk.log_bridge())
+	sdk._events._bridge = null
+	sdk._events._tail = GlitchscoutSDK.LogTail.new(path)
+	var f := FileAccess.open(path, FileAccess.READ_WRITE)
+	f.seek_end()
+	for i in 300:
+		f.store_string("gs-tail %d\n" % i)
+	f.close()
+	var tail_lines := func(): return _events("log").filter(func(m): return m.payload.message.begins_with("gs-tail"))
+	assert_bool(await pump_until(func(): return tail_lines.call().size() >= 300)).is_true()
