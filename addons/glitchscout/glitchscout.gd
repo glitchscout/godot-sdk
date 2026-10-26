@@ -26,6 +26,7 @@ const InputInjection := preload("input.gd")
 const Observation := preload("observe.gd")
 const UI := preload("ui.gd")
 const Queries := preload("queries.gd")
+const Commands := preload("commands.gd")
 const PROTOCOL := "glitchscout/1"
 const SDK_VERSION := "0.1.0"
 const MAX_TEXT_FRAME_BYTES := 262144
@@ -82,6 +83,7 @@ var _injection: InputInjection
 var _observation: Observation
 var _ui: UI
 var _queries: Queries
+var _commands: Commands
 
 
 func _init() -> void:
@@ -90,6 +92,8 @@ func _init() -> void:
 	_observation = Observation.new(self)
 	_ui = UI.new(self)
 	_queries = Queries.new(self)
+	_commands = Commands.new(self)
+	register_handler("COMMAND", _commands.on_command)
 	register_handler("QUERY", _queries.on_query)
 	register_handler("OBSERVE", _observation.on_observe)
 	register_handler("UI_ACTION", _ui.on_ui_action)
@@ -203,6 +207,16 @@ func poll() -> void:
 			_on_closed(now)
 
 
+## Registers a debug command the orchestrator may run (see commands.gd for the handler contract). Only
+## registered commands and the SDK's built-ins can run.
+static func register_command(name: String, handler: Callable, description := "", params := {}) -> void:
+	Commands.register(name, handler, description, params)
+
+
+static func unregister_command(name: String) -> void:
+	Commands.unregister(name)
+
+
 ## Presses an action for exactly ticks game frames (used by UI_ACTION's ui_accept).
 func press_for(action: String, ticks: int) -> void:
 	_injection.queue_press(action, ticks)
@@ -301,7 +315,7 @@ func build_manifest() -> Dictionary:
 		"physics_hints": hints,
 		"entity_types": _merged_entity_types(),
 		"events": events.duplicate(),
-		"commands": commands.duplicate(true),
+		"commands": commands.duplicate(true) + Commands.descriptors(),
 		"supports": _supports(),
 		"limits": {
 			"max_text_frame_bytes": MAX_TEXT_FRAME_BYTES,
@@ -429,6 +443,10 @@ func _set_state(s: State) -> void:
 
 func _supports() -> Dictionary:
 	var s := supports.duplicate(true)
+	var available := Commands.names()
+	s.god_mode = s.god_mode or "god_mode" in available
+	s.save_fixtures = s.save_fixtures or "load_save" in available
+	s.seed = s.seed or "set_seed" in available
 	if is_inside_tree():
 		s.navmesh = _queries.has_navmesh()
 		s.nav_links = _queries.has_nav_links()
