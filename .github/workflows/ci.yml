@@ -43,6 +43,36 @@ jobs:
           name: gdunit-reports
           path: reports/
 
+  render:
+    # CAPTURE with a real renderer: software OpenGL under Xvfb (the other suites run headless).
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/schemacheck/go.mod
+          cache-dependency-path: tools/schemacheck/go.sum
+      - name: Xvfb and Mesa
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libgl1-mesa-dri libglx-mesa0
+      - name: Read the pinned Godot version
+        id: godot
+        run: echo "version=$(cat .godot-version)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        id: godot-cache
+        with:
+          path: ~/godot
+          key: godot-${{ steps.godot.outputs.version }}-linux-x86_64
+      - if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: scripts/install_godot.sh ~/godot
+      - name: Render suites
+        run: RENDER=1 GODOT_BIN=~/godot/godot xvfb-run -a -s "-screen 0 1280x720x24" scripts/test.sh -a res://render_tests
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-reports
+          path: reports/
+
   bench:
     # SDK step-overhead micro-benchmark: its own job, nothing instrumented. Fails when the median STEP
     # round trip on an empty scene is over 5 ms.

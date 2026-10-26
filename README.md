@@ -95,6 +95,14 @@ Glitchscout runs exactly N physics and N idle frames. Launch with `--fixed-fps 6
 freely instead, and `-- --glitchscout-step-method=pause` overrides the project setting. Code that reads the
 wall clock (`Time.get_ticks_msec()`) sees jumps while the game is held; use `delta` or physics frames.
 
+## Screenshots
+
+Glitchscout's CAPTURE grabs what the viewport last rendered, so it needs a renderer (it is refused in a
+`--headless` run). Routine screenshots are kept to 256 KB (JPEG at lower quality, then smaller, as needed);
+visual baselines are lossless PNG at full resolution, up to the protocol's 4 MB frame cap. The SDK asks for
+a 4 MiB WebSocket send buffer; frames bigger than the buffer it gets go out in chunks, without blocking the
+game.
+
 ## Events and logs
 
 `gs.event("dialogue_started", {"npc_id": "elder"})`, with `gs` looked up as under Reset, reports a game
@@ -129,4 +137,5 @@ runs when the SDK isn't there.
 
 ## Development
 
-Godot 4.7.2 (see `.godot-version`) and Go are needed. Run `scripts/test.sh`.
+Godot 4.7.2 (see `.godot-version`) and Go are needed. Run `scripts/test.sh`. Suites that need a real
+renderer live in `render_tests/`: `RENDER=1 scripts/test.sh -a res://render_tests` (CI runs them under Xvfb).

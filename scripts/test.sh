@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# The repo's test loop: GdUnit4 suites headless, then a protocol schema check of every message the SDK
-# sent during them. Prints GREEN p/t or RED p/t. Args go to GdUnit4 (default: -a res://tests).
+# The repo's test loop: GdUnit4 suites headless, then a protocol check of every message and binary frame
+# the SDK sent during them. Prints GREEN p/t or RED p/t. Args go to GdUnit4 (default: -a res://tests).
 # Godot comes from $GODOT_BIN, else `godot` on PATH; the version must match .godot-version.
+# RENDER=1 runs with a real renderer (opengl3) instead of --headless, for res://render_tests (CI: xvfb).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 GODOT="${GODOT_BIN:-$(command -v godot || true)}"
@@ -12,7 +13,13 @@ have="$("$GODOT" --version | head -1)"
 
 scripts/install_gdunit4.sh
 rm -rf reports
-mkdir -p reports/messages
+mkdir -p reports/messages reports/frames
+# The pinned protocol module's golden fixtures, for tests that compare against them.
+GLITCHSCOUT_PROTOCOL_DIR="$(cd tools/schemacheck && go mod download github.com/glitchscout/protocol &&
+  go list -m -f '{{.Dir}}' github.com/glitchscout/protocol)"
+export GLITCHSCOUT_PROTOCOL_DIR
+display=(--headless)
+[[ "${RENDER:-}" == 1 ]] && display=(--rendering-driver opengl3)
 # Import once so class_name caches exist for the test runner.
 "$GODOT" --headless --path . --import >/dev/null 2>&1 || true
 
@@ -23,7 +30,7 @@ if (( $# == 0 )); then
 fi
 set +e
 # Step-mode conditions: a fixed 60 fps (one physics tick per frame) and no audio device.
-"$GODOT" --headless --fixed-fps 60 --audio-driver Dummy --path . -s -d --remote-debug tcp://127.0.0.1:0 \
+"$GODOT" "${display[@]}" --fixed-fps 60 --audio-driver Dummy --path . -s -d --remote-debug tcp://127.0.0.1:0 \
   res://addons/gdUnit4/bin/GdUnitCmdTool.gd --ignoreHeadlessMode -c -rd res://reports "$@"
 status=$?
 set -e
@@ -38,7 +45,7 @@ read -r total failed < <(awk '
 passed=$((total - failed))
 
 schema_status=0
-(cd tools/schemacheck && go run . -min "$min_messages" ../../reports/messages) || schema_status=$?
+(cd tools/schemacheck && go run . -min "$min_messages" -frames ../../reports/frames ../../reports/messages) || schema_status=$?
 
 if (( status == 0 && failed == 0 && schema_status == 0 )); then
   echo "GREEN $passed/$total"
