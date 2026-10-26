@@ -186,3 +186,28 @@ func test_manifest_lists_entity_types_and_observe_defaults() -> void:
 	var m: Dictionary = hello.payload.manifest
 	assert_array(m.entity_types).contains(["door", "enemy"])
 	assert_dict(m.limits.observe_defaults).contains_keys(["radius", "max_n"])
+
+
+func test_game_values_are_coerced_to_valid_json_and_schema_types() -> void:
+	_thing("glitchscout_interactable", "door", Vector3(2, 1, 0), {"type": "door", "state": 2, "enabled": "yes", "interaction_range": "3", "requires": ["k", 7]})
+	_thing("glitchscout_threat", "robot", Vector3(3, 1, 0), {"type": "enemy", "health": INF, "attack_range": NAN})
+	_thing("glitchscout_observable", "orb", Vector3(4, 1, 0), {"type": "orb", "charge": INF, "nested": {"x": NAN}})
+	var obs := await _observe({"sections": ["interactables", "threats", "entities"]})
+	var door: Dictionary = obs.interactables[0]
+	assert_str(door.state).is_equal("2")
+	assert_bool(door.enabled).is_true()
+	assert_float(door.interaction_range).is_equal(3.0)
+	assert_array(door.requires).contains_exactly(["k", "7"])
+	assert_bool(obs.threats[0].has("health")).is_false() # not finite: left out
+	assert_that(obs.entities[0].properties.charge).is_null()
+	# tools/schemacheck validates the captured message too
+
+
+func test_an_observation_that_cannot_fit_is_an_error_not_an_oversized_frame() -> void:
+	level.get_node("Player").remove_from_group("player")
+	_thing("player", "big", Vector3(0, 1, 0), {"state_flags": ["x".repeat(300000)]})
+	start_sdk()
+	await handshake()
+	var m := await request("OBSERVE", {"sections": ["player"]})
+	assert_str(m.message_type).is_equal("ERROR")
+	assert_str(m.payload.code).is_equal("observation_too_large")

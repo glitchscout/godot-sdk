@@ -28,6 +28,7 @@ var _stream_filter := {}
 var _stream_due := 0
 var _streamed := false
 var _last_states := {} ## interactable id -> state at the last STATE_UPDATE
+var _warned_too_large := false
 
 
 func _init(owner: Node) -> void:
@@ -43,14 +44,24 @@ func on_observe(msg: Dictionary) -> void:
 		_stream_due = sdk.tick + 1
 		sdk.reply(msg, "ACK", {})
 		return
-	sdk.send_text(_fit("OBSERVATION", p, msg.get("id"), ""))
+	var text := _fit("OBSERVATION", p, msg.get("id"), "")
+	if text.is_empty():
+		sdk.reply_error(msg, "observation_too_large", "the observation doesn't fit in %d bytes even with every entity cut; narrow sections or raise max_bytes" % int(p.get("max_bytes", sdk.MAX_TEXT_FRAME_BYTES)))
+		return
+	sdk.send_text(text)
 
 
 ## Called at the start of every game frame: sends a STATE_UPDATE when one is due.
 func frame_start() -> void:
 	if _stream_hz <= 0.0 or sdk.tick < _stream_due:
 		return
-	sdk.send_text(_fit("STATE_UPDATE", _stream_filter, null, "delta" if _streamed else "full"))
+	var text := _fit("STATE_UPDATE", _stream_filter, null, "delta" if _streamed else "full")
+	if text.is_empty():
+		if not _warned_too_large:
+			_warned_too_large = true
+			push_warning("Glitchscout: a STATE_UPDATE didn't fit the text-frame cap and was skipped")
+	else:
+		sdk.send_text(text)
 	_streamed = true
 	_stream_due = sdk.tick + maxi(1, roundi(Engine.physics_ticks_per_second / _stream_hz))
 
@@ -67,7 +78,7 @@ func entity_types() -> Array[String]:
 
 
 ## Encodes an OBSERVATION or STATE_UPDATE, dropping the farthest entities, then interactables, then threats
-## until it fits the cap.
+## until it fits the cap. Returns "" when even that isn't enough (never an oversized frame).
 func _fit(message_type: String, filter: Dictionary, reply_to: Variant, mode: String) -> String:
 	var cap := int(filter.get("max_bytes", sdk.MAX_TEXT_FRAME_BYTES))
 	var present := observe(filter)
@@ -89,7 +100,7 @@ func _fit(message_type: String, filter: Dictionary, reply_to: Variant, mode: Str
 				cut = true
 				break
 		if not cut:
-			break
+			return ""
 		text = build.call()
 	return text
 
@@ -131,7 +142,7 @@ func observe(filter: Dictionary) -> Dictionary:
 	var origin := _position(player) if player else _camera_position()
 	var obs := {}
 	if "player" in sections and player:
-		obs.player = _player(player)
+		obs.player = _player(player, _info(player))
 	if "camera" in sections:
 		var cam := _camera()
 		if not cam.is_empty():
@@ -156,17 +167,17 @@ func _player_node() -> Node:
 	return players[0] if not players.is_empty() else null
 
 
-func _player(node: Node) -> Dictionary:
-	var info := _info(node)
+func _player(node: Node, info: Dictionary) -> Dictionary:
 	var flags: Array = []
 	if (node is CharacterBody3D or node is CharacterBody2D) and node.is_on_floor():
 		flags.append("is_grounded")
 	for f in info.get("state_flags", []):
 		if not str(f) in flags:
 			flags.append(str(f))
-	var p := {"position": _vec(_position(node)), "velocity": _vec(_velocity(node)), "state_flags": flags}
-	if info.has("health"):
-		p.health = float(info.health)
+	var p := {"position": _vec(_position(node)), "velocity": _vec(_velocity(node, info)), "state_flags": flags}
+	var health: Variant = _num(info.get("health"))
+	if health != null:
+		p.health = health
 	var scene := _scene_of(node)
 	if not scene.is_empty():
 		p.scene = scene
@@ -187,23 +198,84 @@ func _item(section: String, node: Node, origin: Vector3) -> Dictionary:
 	var info := _info(node)
 	var pos := _position(node)
 	var item := {"id": _id(node, info), "position": _vec(pos), "distance": snappedf(pos.distance_to(origin), 0.001)}
+	# Game values are coerced to the schema's types: a game's own enums, strings and NaNs must not make the
+	# message invalid (or not JSON at all).
 	match section:
 		"interactables":
-			item.type = str(info.get("type", "interactable"))
-			for k in INTERACTABLE_KEYS.slice(1):
-				if info.has(k):
-					item[k] = info[k]
+			item.type = _text(info.get("type"), "interactable")
+			_put_text(item, "state", info.get("state"))
+			if info.has("enabled"):
+				item.enabled = _truthy(info.enabled)
+			_put_text(item, "required_action", info.get("required_action"))
+			_put_num(item, "interaction_range", info.get("interaction_range"), true)
+			if info.get("requires") is Array:
+				item.requires = info.requires.map(func(r): return str(r)).filter(func(r): return not r.is_empty())
 		"threats":
-			for k in THREAT_KEYS:
-				if info.has(k):
-					item[k] = info[k]
+			_put_text(item, "type", info.get("type"))
+			_put_num(item, "health", info.get("health"), false)
+			_put_num(item, "attack_range", info.get("attack_range"), true)
+			_put_text(item, "state", info.get("state"))
 		"entities":
-			item.type = str(info.get("type", node.get_class().to_lower()))
+			item.type = _text(info.get("type"), node.get_class().to_lower())
 			var props := info.duplicate()
 			props.erase("id")
 			props.erase("type")
-			item.properties = props
+			item.properties = _clean(props)
 	return item
+
+
+static func _num(v: Variant) -> Variant:
+	var f := NAN
+	if v is int or v is float:
+		f = float(v)
+	elif v is String and v.is_valid_float():
+		f = v.to_float()
+	return f if is_finite(f) else null
+
+
+static func _text(v: Variant, default: String) -> String:
+	var s := str(v) if v != null else ""
+	return s if not s.is_empty() else default
+
+
+static func _truthy(v: Variant) -> bool:
+	if v is String:
+		return not v.to_lower() in ["", "false", "0", "no", "off"]
+	return bool(v) if (v is bool or v is int or v is float) else v != null
+
+
+static func _put_text(item: Dictionary, key: String, v: Variant) -> void:
+	var s := _text(v, "")
+	if not s.is_empty():
+		item[key] = s
+
+
+static func _put_num(item: Dictionary, key: String, v: Variant, non_negative: bool) -> void:
+	var n: Variant = _num(v)
+	if n != null and (not non_negative or n >= 0.0):
+		item[key] = n
+
+
+## Makes arbitrary game data JSON-safe: non-finite numbers become null, vectors become {x, y, z}, other
+## objects become strings.
+static func _clean(v: Variant) -> Variant:
+	match typeof(v):
+		TYPE_FLOAT:
+			return v if is_finite(v) else null
+		TYPE_DICTIONARY:
+			var out := {}
+			for k in v:
+				out[str(k)] = _clean(v[k])
+			return out
+		TYPE_ARRAY, TYPE_PACKED_STRING_ARRAY, TYPE_PACKED_FLOAT32_ARRAY, TYPE_PACKED_FLOAT64_ARRAY, TYPE_PACKED_INT32_ARRAY, TYPE_PACKED_INT64_ARRAY:
+			return Array(v).map(func(e): return _clean(e))
+		TYPE_VECTOR2:
+			return {"x": _clean(v.x), "y": _clean(v.y)}
+		TYPE_VECTOR3:
+			return {"x": _clean(v.x), "y": _clean(v.y), "z": _clean(v.z)}
+		TYPE_NIL, TYPE_BOOL, TYPE_INT, TYPE_STRING:
+			return v
+	return str(v)
 
 
 func _info(node: Node) -> Dictionary:
@@ -248,7 +320,7 @@ func _position(node: Node) -> Vector3:
 	return Vector3.ZERO
 
 
-func _velocity(node: Node) -> Vector3:
+func _velocity(node: Node, info: Dictionary) -> Vector3:
 	if node is CharacterBody3D:
 		return node.velocity
 	if node is RigidBody3D:
@@ -257,7 +329,7 @@ func _velocity(node: Node) -> Vector3:
 		return Vector3(node.velocity.x, node.velocity.y, 0)
 	if node is RigidBody2D:
 		return Vector3(node.linear_velocity.x, node.linear_velocity.y, 0)
-	var v: Variant = _info(node).get("velocity")
+	var v: Variant = info.get("velocity")
 	return v if v is Vector3 else Vector3.ZERO
 
 

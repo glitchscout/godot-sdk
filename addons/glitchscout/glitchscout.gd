@@ -215,9 +215,9 @@ func register_handler(message_type: String, handler: Callable) -> void:
 func send(message_type: String, payload: Dictionary, reply_to: Variant = null) -> String:
 	if _peer == null or _peer.get_ready_state() != WebSocketPeer.STATE_OPEN:
 		return ""
-	var text := encode(message_type, payload, reply_to)
-	_peer.send_text(text)
-	return JSON.parse_string(text).id
+	var id := _uuid()
+	_peer.send_text(encode(message_type, payload, reply_to, id))
+	return id
 
 
 ## Sends an already encoded message (see [method encode]).
@@ -226,12 +226,12 @@ func send_text(text: String) -> void:
 		_peer.send_text(text)
 
 
-## The JSON text of one message, with a fresh id and the current session and tick.
-func encode(message_type: String, payload: Dictionary, reply_to: Variant = null) -> String:
+## The JSON text of one message (a fresh id unless given), with the current session and tick.
+func encode(message_type: String, payload: Dictionary, reply_to: Variant = null, id := "") -> String:
 	var env := {
 		"protocol": PROTOCOL,
 		"message_type": message_type,
-		"id": _uuid(),
+		"id": id if not id.is_empty() else _uuid(),
 		"reply_to": reply_to,
 		"session": session_id if not session_id.is_empty() else null,
 		"tick_frame": tick,
