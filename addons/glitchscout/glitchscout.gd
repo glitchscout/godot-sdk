@@ -22,6 +22,7 @@ enum State {
 }
 
 const StepMode := preload("step_mode.gd")
+const InputInjection := preload("input.gd")
 const PROTOCOL := "glitchscout/1"
 const SDK_VERSION := "0.1.0"
 const MAX_TEXT_FRAME_BYTES := 262144
@@ -74,11 +75,14 @@ var _dropped_ms := 0
 var _close_at_ms := -1
 var _crypto := Crypto.new()
 var _step: StepMode
+var _injection: InputInjection
 
 
 func _init() -> void:
 	_step = StepMode.new(self)
+	_injection = InputInjection.new(self)
 	register_handler("STEP", _step.on_step)
+	register_handler("ACTION_INJECT", _injection.on_inject)
 
 
 ## Reads the endpoint and token from the user arguments that follow [code]--[/code].
@@ -135,7 +139,8 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
-	_step.frame_start() # may hold right here until the next STEP
+	if _step.frame_start(): # may hold right here until the next STEP
+		_injection.frame_start()
 	poll()
 
 
@@ -146,6 +151,7 @@ func _physics_process(_delta: float) -> void:
 
 func _exit_tree() -> void:
 	_step.release()
+	_injection.release_all()
 	if _peer == null:
 		return
 	# The game is going away: say so, so the session ends now instead of waiting out a resume window.
@@ -361,6 +367,8 @@ func _give_up() -> void:
 func _set_state(s: State) -> void:
 	if s != state:
 		state = s
+		if s in [State.CLOSED, State.REJECTED]:
+			_injection.release_all() # no orchestrator left to let go of anything
 		state_changed.emit(s)
 
 
@@ -373,6 +381,8 @@ func _input_actions() -> Array:
 				kind = "axis_1d"
 				break
 		out.append({"name": String(action), "type": kind})
+	for axis in InputInjection.axes():
+		out.append({"name": axis, "type": "axis_2d"})
 	return out
 
 

@@ -38,7 +38,8 @@ func on_step(msg: Dictionary) -> void:
 
 
 ## Called at the start of every frame, before any game node runs (and before this frame's requests).
-func frame_start() -> void:
+## Returns whether the rest of the frame belongs to the game (false while pause mode keeps it paused).
+func frame_start() -> bool:
 	if not _should_wait():
 		if _engaged: # the session ended: let the game go, once (never fight the game's own pause later)
 			_engaged = false
@@ -48,19 +49,20 @@ func frame_start() -> void:
 			budget -= 1
 		else:
 			_finish_step()
-		return
+		return true
 	_engaged = true
 	if budget == 0:
 		_finish_step()
 		if method == "pause":
 			_pause()
-			return # frames keep running; game nodes don't
+			return false # frames keep running; game nodes don't
 		_hold()
 		if budget == 0:
-			return # released without a step (session over, or the safety valve)
+			return true # released without a step (session over, or the safety valve): the game runs on
 	if method == "pause":
 		_unpause()
 	budget -= 1 # the rest of this frame belongs to the game
+	return true
 
 
 ## Lets the game run freely again (the SDK is going away).
