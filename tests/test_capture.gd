@@ -150,3 +150,35 @@ func test_an_impossible_frame_is_an_error_not_a_frame() -> void:
 func _ready_sdk() -> void:
 	start_sdk()
 	await handshake()
+
+
+func test_messages_sent_while_frames_fill_the_buffer_are_kept_in_order() -> void:
+	# A connection that really got only 64 KiB of send buffer (a refused raise): the first chunk fills it.
+	sdk = GlitchscoutSDK.new()
+	sdk.quit_on_goodbye = false
+	sdk.time_mode = "realtime"
+	sdk.outbound_buffer_bytes = 64 * 1024
+	sdk.configure(orch.endpoint(), "tok")
+	add_child(sdk)
+	await handshake()
+	var payload := Crypto.new().generate_random_bytes(300 * 1024)
+	var f := {"frame_type": 1, "encoding": 1, "flags": 0, "tick_frame": 0, "request_id": MockOrchestrator._uuid(),
+		"width": 1, "height": 1, "source_width": 1, "source_height": 1}
+	var sent := [-1]
+	sdk.send_frame(payload, f, func(n: int) -> void: sent[0] = n)
+	sdk.event("gs_after_frame") # in the same frame, with the buffer full
+	var got_event := func(): return orch.messages("EVENT").any(func(m): return m.payload.get("name") == "gs_after_frame")
+	assert_bool(await pump_until(func(): return sent[0] > 0 and got_event.call(), 10000)).is_true()
+	assert_int(orch.frames.size()).is_equal(sent[0])
+	var assembled := PackedByteArray()
+	for frame in orch.frames:
+		assembled.append_array(frame.slice(64))
+	assert_bool(assembled == payload).is_true()
+
+
+func test_a_send_buffer_too_small_for_any_frame_fails_the_capture() -> void:
+	await _ready_sdk()
+	sdk.outbound_buffer_bytes = 64
+	sdk.capture_source = func() -> Image: return _noise(16, 16)
+	var m := await request("CAPTURE", {"encoding": "png"})
+	assert_str(m.payload.code).is_equal("frame_send_failed")

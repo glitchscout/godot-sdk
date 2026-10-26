@@ -95,7 +95,7 @@ var capture_source := Callable()
 var outbound_buffer_bytes := OUTBOUND_BUFFER_BYTES
 ## How long a queued frame may wait for room in the send buffer before it's dropped.
 var frame_send_timeout_ms := 2000
-var _outbox: Array[Dictionary] = [] ## frames waiting to be sent: {frames, next, done, deadline}
+var _outbox: Array[Dictionary] = [] ## messages waiting for room in the send buffer: {messages, binary, next, done, deadline}
 var _reset_handler := Callable()
 
 
@@ -224,7 +224,7 @@ func poll() -> void:
 					_next_heartbeat_ms = now + heartbeat_interval_ms
 					send("HEARTBEAT", {"uptime_ms": now - _started_ms})
 				_events.flush()
-				_flush_frames()
+				_flush_outbox()
 		WebSocketPeer.STATE_CLOSED:
 			_on_closed(now)
 
@@ -345,7 +345,7 @@ func send(message_type: String, payload: Dictionary, reply_to: Variant = null) -
 	if _peer == null or _peer.get_ready_state() != WebSocketPeer.STATE_OPEN:
 		return ""
 	var id := _uuid()
-	_peer.send_text(encode(message_type, payload, reply_to, id))
+	_put(encode(message_type, payload, reply_to, id).to_utf8_buffer(), false)
 	return id
 
 
@@ -354,47 +354,69 @@ func send(message_type: String, payload: Dictionary, reply_to: Variant = null) -
 ## got less) goes as chunks that fit, at most 1 MiB each. Frames leave from poll() as the buffer drains, so
 ## sending never blocks the game; one that can't get out within frame_send_timeout_ms is dropped.
 func send_frame(payload: PackedByteArray, f: Dictionary, done: Callable) -> void:
-	if _peer == null or _peer.get_ready_state() != WebSocketPeer.STATE_OPEN:
+	var room := _frame_room()
+	if room <= Capture.HEADER_BYTES:
 		done.call(0)
 		return
-	var room := _frame_room()
-	var frames: Array[PackedByteArray] = [Capture.encode_frame(payload, f)]
-	if frames[0].size() > room:
+	var frames: Array[PackedByteArray] = []
+	if Capture.HEADER_BYTES + payload.size() <= room:
+		frames.append(Capture.encode_frame(payload, f))
+	else:
 		frames = Capture.split(payload, f, mini(Capture.MAX_CHUNK_BYTES, room - Capture.HEADER_BYTES))
-	_outbox.append({"frames": frames, "next": 0, "done": done, "deadline": Time.get_ticks_msec() + frame_send_timeout_ms})
-	_flush_frames()
+	_outbox.append({"messages": frames, "binary": true, "next": 0, "done": done, "deadline": Time.get_ticks_msec() + frame_send_timeout_ms})
+	_flush_outbox()
 
 
 func _frame_room() -> int:
+	if _peer == null or _peer.get_ready_state() != WebSocketPeer.STATE_OPEN:
+		return 0
 	return mini(_peer.outbound_buffer_size, outbound_buffer_bytes)
 
 
-## Sends queued frames while they fit in the send buffer.
-func _flush_frames() -> void:
+## Writes a message now, or queues it behind what's already waiting so messages keep their order and none
+## is lost to a full send buffer.
+func _put(bytes: PackedByteArray, binary: bool) -> void:
+	if _outbox.is_empty() and (_fits(bytes.size()) or bytes.size() > _frame_room()):
+		_write(bytes, binary) # one that could never fit is tried anyway, and the peer refuses it
+		return
+	_outbox.append({"messages": [bytes], "binary": binary, "next": 0, "done": Callable(), "deadline": Time.get_ticks_msec() + frame_send_timeout_ms})
+
+
+func _fits(n: int) -> bool:
+	return _peer.get_current_outbound_buffered_amount() + n <= _frame_room()
+
+
+func _write(bytes: PackedByteArray, binary: bool) -> Error:
+	return _peer.send(bytes, WebSocketPeer.WRITE_MODE_BINARY if binary else WebSocketPeer.WRITE_MODE_TEXT)
+
+
+## Sends queued messages while they fit in the send buffer.
+func _flush_outbox() -> void:
 	while not _outbox.is_empty():
-		var job: Dictionary = _outbox[0]
-		while job.next < job.frames.size():
-			var frame: PackedByteArray = job.frames[job.next]
-			if _peer.get_current_outbound_buffered_amount() + frame.size() > _frame_room():
-				if Time.get_ticks_msec() <= job.deadline:
-					return # the buffer is draining; try again on the next poll
-				_outbox.pop_front()
-				job.done.call(0)
-				break
-			if _peer.send(frame, WebSocketPeer.WRITE_MODE_BINARY) != OK:
-				_outbox.pop_front()
-				job.done.call(0)
-				break
-			job.next += 1
-		if job.next == job.frames.size() and not _outbox.is_empty() and _outbox[0] == job:
-			_outbox.pop_front()
-			job.done.call(job.frames.size())
+		var sent := _pump(_outbox[0])
+		if sent < 0:
+			return # the buffer is draining; carry on at the next poll
+		var job: Dictionary = _outbox.pop_front()
+		if job.done.is_valid():
+			job.done.call(sent)
+
+
+## Writes what fits of one queued job: its message count once all are out, -1 to wait, 0 if it failed.
+func _pump(job: Dictionary) -> int:
+	while job.next < job.messages.size():
+		var bytes: PackedByteArray = job.messages[job.next]
+		if not _fits(bytes.size()):
+			return -1 if Time.get_ticks_msec() <= job.deadline else 0
+		if _write(bytes, job.binary) != OK:
+			return 0
+		job.next += 1
+	return job.messages.size()
 
 
 ## Sends an already encoded message (see [method encode]).
 func send_text(text: String) -> void:
 	if _peer and _peer.get_ready_state() == WebSocketPeer.STATE_OPEN:
-		_peer.send_text(text)
+		_put(text.to_utf8_buffer(), false)
 
 
 ## The JSON text of one message (a fresh id unless given), with the current session and tick.
