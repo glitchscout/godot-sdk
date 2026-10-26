@@ -7,7 +7,8 @@ navigation queries and screenshots. Compiled out of release builds.
 
 Copy `addons/glitchscout/` into your project and enable **Glitchscout** under Project → Project Settings →
 Plugins. That registers the `Glitchscout` autoload. It does nothing unless Glitchscout launches the game with
-`-- --glitchscout-endpoint=… --glitchscout-token=…`.
+`-- --glitchscout-endpoint=… --glitchscout-token=…`, and only in a debug build or one exported with the `qa`
+feature tag.
 
 Optional project settings:
 
@@ -93,6 +94,38 @@ Glitchscout runs exactly N physics and N idle frames. Launch with `--fixed-fps 6
 `--audio-driver Dummy` (Glitchscout does this for you). `-- --glitchscout-time=realtime` lets the game run
 freely instead, and `-- --glitchscout-step-method=pause` overrides the project setting. Code that reads the
 wall clock (`Time.get_ticks_msec()`) sees jumps while the game is held; use `delta` or physics frames.
+
+## Events and logs
+
+`gs.event("dialogue_started", {"npc_id": "elder"})`, with `gs` looked up as under Reset, reports a game
+event; events sent before the session opens are kept and delivered in order. List the event names your game
+sends in the `glitchscout/events` project setting so Glitchscout knows to expect them. Scene changes are
+reported as `scene_changed` automatically.
+
+Errors, warnings and printed lines are forwarded as they happen (GDScript and shader errors with their file,
+line and function), up to 200 a frame; a flood beyond that is reported as one "log lines dropped" line.
+
+## Reset
+
+Between test runs Glitchscout reloads the current scene. If your game keeps state outside the scene (autoloads,
+statics), register a reset that clears it and starts the level afresh:
+
+```gdscript
+var gs := get_node_or_null("/root/Glitchscout")
+if gs: gs.set_reset_handler(_reset)
+```
+
+## Shipping builds
+
+The SDK must not ship. In every release export preset, add `addons/glitchscout/*` to **Resources → Filters to
+exclude files**; the addon's export plugin then also drops its autoload and plugin entry from the exported
+project settings, and reports an error if a release preset would still include SDK files. A QA build that
+should keep the SDK is a release preset with the `qa` custom feature tag and no exclusion. See
+`export_presets.cfg` for both. `tools/releasescan` checks an exported pack (`go run . path/to/game.pck`
+fails if the SDK is in it); CI runs it on a Release and a QA export.
+
+Code that talks to the SDK should look it up with `get_node_or_null("/root/Glitchscout")`, as above, so it still
+runs when the SDK isn't there.
 
 ## Development
 

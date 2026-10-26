@@ -27,6 +27,8 @@ const Observation := preload("observe.gd")
 const UI := preload("ui.gd")
 const Queries := preload("queries.gd")
 const Commands := preload("commands.gd")
+const Events := preload("events.gd")
+const LogTail := preload("log_tail.gd")
 const PROTOCOL := "glitchscout/1"
 const SDK_VERSION := "0.1.0"
 const MAX_TEXT_FRAME_BYTES := 262144
@@ -51,7 +53,7 @@ var reconnect_interval_ms := 500
 var resume_window_ms := 30000
 ## Capabilities advertised in the manifest. Each SDK feature switches its own on.
 var supports := {
-	"step_mode": true, "reset_tiers": [], "navmesh": false, "nav_links": false, "ui_tree": true,
+	"step_mode": true, "reset_tiers": [1], "navmesh": false, "nav_links": false, "ui_tree": true,
 	"screenshots": false, "seed": false, "save_fixtures": false, "god_mode": false,
 }
 ## Debug commands, events and entity types the game registered, for the manifest.
@@ -84,6 +86,8 @@ var _observation: Observation
 var _ui: UI
 var _queries: Queries
 var _commands: Commands
+var _events: Events
+var _reset_handler := Callable()
 
 
 func _init() -> void:
@@ -93,6 +97,8 @@ func _init() -> void:
 	_ui = UI.new(self)
 	_queries = Queries.new(self)
 	_commands = Commands.new(self)
+	_events = Events.new(self)
+	register_handler("STATE_CTRL", _on_state_ctrl)
 	register_handler("COMMAND", _commands.on_command)
 	register_handler("QUERY", _queries.on_query)
 	register_handler("OBSERVE", _observation.on_observe)
@@ -147,10 +153,11 @@ func _ready() -> void:
 		push_warning("Glitchscout: unknown time mode '%s', using step" % time_mode)
 		time_mode = "step"
 	_step.method = step_method
-	if _endpoint.is_empty():
+	if not should_enable(_endpoint, OS.is_debug_build(), OS.has_feature("qa")):
 		return
 	_dropped_ms = _started_ms
 	_set_state(State.CONNECTING)
+	_events.start()
 	_open_socket()
 
 
@@ -169,6 +176,7 @@ func _physics_process(_delta: float) -> void:
 func _exit_tree() -> void:
 	_step.release()
 	_injection.release_all()
+	_events.stop()
 	if _peer == null:
 		return
 	# The game is going away: say so, so the session ends now instead of waiting out a resume window.
@@ -200,11 +208,71 @@ func poll() -> void:
 					_peer.close(1000, "goodbye")
 			elif state in [State.CONNECTING, State.RECONNECTING]:
 				_send_hello()
-			elif state == State.READY and now >= _next_heartbeat_ms:
-				_next_heartbeat_ms = now + heartbeat_interval_ms
-				send("HEARTBEAT", {"uptime_ms": now - _started_ms})
+			elif state == State.READY:
+				if now >= _next_heartbeat_ms:
+					_next_heartbeat_ms = now + heartbeat_interval_ms
+					send("HEARTBEAT", {"uptime_ms": now - _started_ms})
+				_events.flush()
 		WebSocketPeer.STATE_CLOSED:
 			_on_closed(now)
+
+
+## Whether the SDK switches itself on: only with an orchestrator endpoint, and only in a debug build or a
+## build exported with the "qa" feature tag. A shipping build never connects (and normally doesn't contain
+## the SDK at all: the export plugin strips it).
+static func should_enable(endpoint: String, debug: bool, qa: bool) -> bool:
+	return not endpoint.is_empty() and (debug or qa)
+
+
+## Sends a game event, e.g. gs.event("dialogue_started", {"npc_id": "elder"}) with
+## gs = get_node_or_null("/root/Glitchscout"), so the game still runs in a build without the SDK.
+func event(name: String, data := {}) -> void:
+	_events.event(name, data)
+
+
+## The Logger forwarding Godot's log output (null on Godot versions without one).
+func log_bridge() -> Object:
+	return _events.bridge()
+
+
+## What RELOAD_SCENE (reset tier 1) does: handler(), or a fresh instance of the current scene when none is set.
+## Games whose root node outlives levels set one that rebuilds the current level.
+func set_reset_handler(handler: Callable) -> void:
+	_reset_handler = handler
+
+
+func _on_state_ctrl(msg: Dictionary) -> void:
+	if str(msg.payload.get("op", "")) != "RELOAD_SCENE":
+		reply_error(msg, "unsupported_tier", "SAVE/LOAD snapshots (reset tier 2) aren't supported by Glitchscout SDK %s; use RELOAD_SCENE" % SDK_VERSION)
+		return
+	if _reset_handler.is_valid():
+		_reset_handler.call()
+	elif not _reload_current_scene_now():
+		reply_error(msg, "no_scene", "there is no current scene loaded from a file to reload; set a reset handler")
+		return
+	reply(msg, "ACK", {"result": {"tick_frame": tick}})
+
+
+## Swaps the current scene for a fresh instance right away. reload_current_scene() waits for the end of the
+## frame, which a held game only reaches after the next STEP, so an OBSERVE after the ACK would see the old one.
+func _reload_current_scene_now() -> bool:
+	var tree := get_tree()
+	var old := tree.current_scene
+	if old == null or old.scene_file_path.is_empty():
+		return false
+	var packed := load(old.scene_file_path) as PackedScene
+	if packed == null:
+		return false
+	var fresh := packed.instantiate()
+	var parent := old.get_parent()
+	var index := old.get_index()
+	parent.remove_child(old)
+	old.queue_free()
+	parent.add_child(fresh)
+	parent.move_child(fresh, index)
+	tree.current_scene = fresh
+	tree.scene_changed.emit()
+	return true
 
 
 ## Registers a debug command the orchestrator may run (see commands.gd for the handler contract). Only
@@ -314,7 +382,7 @@ func build_manifest() -> Dictionary:
 		"combat_actions": _strings(_setting("glitchscout/combat_actions", [])),
 		"physics_hints": hints,
 		"entity_types": _merged_entity_types(),
-		"events": events.duplicate(),
+		"events": _event_names(),
 		"commands": _command_descriptors(),
 		"supports": _supports(),
 		"limits": {
@@ -461,6 +529,14 @@ func _supports() -> Dictionary:
 		s.navmesh = _queries.has_navmesh()
 		s.nav_links = _queries.has_nav_links()
 	return s
+
+
+func _event_names() -> Array:
+	var out := _events.names()
+	for e in events:
+		if not e in out:
+			out.append(e)
+	return out
 
 
 func _merged_entity_types() -> Array:

@@ -73,3 +73,37 @@ jobs:
         working-directory: tools/stepbench
         run: go run . -godot ~/godot/godot -max-p50-ms 5 | tee "$RUNNER_TEMP/stepbench.json" && cat "$RUNNER_TEMP/stepbench.json" >> "$GITHUB_STEP_SUMMARY"
 
+  release-scan:
+    # Shipping exclusion: a Release export must not contain the SDK, and a QA export must (which proves
+    # the scan can see it).
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/releasescan/go.mod
+          cache: false
+      - name: Read the pinned Godot version
+        id: godot
+        run: echo "version=$(cat .godot-version)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        id: godot-cache
+        with:
+          path: ~/godot
+          key: godot-${{ steps.godot.outputs.version }}-linux-x86_64
+      - if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: scripts/install_godot.sh ~/godot
+      - name: releasescan's own tests
+        working-directory: tools/releasescan
+        run: go vet ./... && go test ./... && test -z "$(gofmt -l .)"
+      - name: Import the project
+        run: ~/godot/godot --headless --path . --import >/dev/null 2>&1 || true
+      - name: Export Release and QA packs
+        run: |
+          mkdir -p build
+          ~/godot/godot --headless --path . --export-pack Release build/release.pck
+          ~/godot/godot --headless --path . --export-pack QA build/qa.pck
+      - name: Scan
+        working-directory: tools/releasescan
+        run: go run . ../../build/release.pck && go run . -expect-sdk ../../build/qa.pck
