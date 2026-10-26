@@ -42,7 +42,8 @@ Glitchscout sees buttons, check boxes, option buttons, line edits, sliders, spin
 Control in group `glitchscout_ui`. Give elements stable ids with the `glitchscout_id` metadata (otherwise the
 node path is used). It presses buttons the way a player does, by focusing them and pressing `ui_accept`. Only
 when a control can't take focus, and for line edits, which react to real keys only, does it activate the control
-directly; reports flag those activations.
+directly; reports flag those activations. UI inside a `SubViewport` is listed, but its rects are in the
+sub-viewport's own pixels, not the screen's.
 
 ## Input
 

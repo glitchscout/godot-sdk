@@ -77,8 +77,8 @@ func entity_types() -> Array[String]:
 	return seen
 
 
-## Encodes an OBSERVATION or STATE_UPDATE, dropping the farthest entities, then interactables, then threats
-## until it fits the cap. Returns "" when even that isn't enough (never an oversized frame).
+## Encodes an OBSERVATION or STATE_UPDATE, dropping the farthest entities, then interactables, then threats,
+## then (in tree order) UI elements, until it fits the cap. Returns "" when even that isn't enough (never an oversized frame).
 func _fit(message_type: String, filter: Dictionary, reply_to: Variant, mode: String) -> String:
 	var cap := int(filter.get("max_bytes", sdk.MAX_TEXT_FRAME_BYTES))
 	var present := observe(filter)
@@ -93,7 +93,7 @@ func _fit(message_type: String, filter: Dictionary, reply_to: Variant, mode: Str
 	while text.to_utf8_buffer().size() > cap:
 		obs.truncated = true
 		var cut := false
-		for section in ["entities", "interactables", "threats"]:
+		for section in ["entities", "interactables", "threats", "ui_elements"]: # UI last: it's not by distance
 			var arr: Array = obs.get(section, [])
 			if not arr.is_empty():
 				obs[section] = arr.slice(0, arr.size() * 9 / 10)

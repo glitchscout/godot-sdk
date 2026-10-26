@@ -138,3 +138,17 @@ func test_state_updates_carry_ui_elements_and_the_manifest_has_ui_tree() -> void
 	assert_bool(await pump_until(func(): return orch.messages("STATE_UPDATE").size() >= 2)).is_true()
 	for u in orch.messages("STATE_UPDATE"):
 		assert_bool(u.payload.has("ui_elements")).is_true()
+
+
+func test_a_huge_ui_is_truncated_rather_than_refused() -> void:
+	var box := VBoxContainer.new()
+	for i in 3000:
+		var l := Label.new()
+		l.text = "damage number %d with a little padding to make it bigger" % i
+		box.add_child(l)
+	game.add_child(box)
+	await _ready_sdk()
+	var m := await request("OBSERVE", {}, 10000)
+	assert_str(m.message_type).is_equal("OBSERVATION")
+	assert_bool(m.payload.truncated).is_true()
+	assert_int(JSON.stringify(m).length()).is_less_equal(262144)
