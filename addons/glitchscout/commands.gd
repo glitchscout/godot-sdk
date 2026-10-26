@@ -13,6 +13,7 @@ extends RefCounted
 ## Built-ins, which a game registration of the same name replaces: load_scene {scene}, set_seed {seed},
 ## time_scale {scale} and teleport {position} (moves the player and stops it).
 
+const Observation := preload("observe.gd")
 const BUILTINS := {
 	"load_scene": {"description": "Changes to a scene (res:// path)", "params": {"scene": "string"}},
 	"set_seed": {"description": "Seeds the global random number generator", "params": {"seed": "int"}},
@@ -75,7 +76,8 @@ func on_command(msg: Dictionary) -> void:
 	if outcome is String:
 		sdk.reply_error(msg, "invalid_args", outcome)
 	elif outcome is Dictionary:
-		sdk.reply(msg, "ACK", {"result": {"value": outcome, "tick_frame": sdk.tick}})
+		# Game data: make it JSON-safe (vectors, non-finite numbers) before it goes on the wire.
+		sdk.reply(msg, "ACK", {"result": {"value": Observation._clean(outcome), "tick_frame": sdk.tick}})
 	else:
 		sdk.reply(msg, "ACK", {"result": {"tick_frame": sdk.tick}})
 
@@ -99,6 +101,8 @@ func _builtin_time_scale(args: Dictionary) -> Variant:
 	var scale: Variant = args.get("scale")
 	if not (scale is float or scale is int) or float(scale) < 0.0:
 		return "time_scale needs a scale >= 0"
+	if sdk.time_mode == "step" and not is_equal_approx(float(scale), 1.0):
+		return "time_scale would break step mode's one physics tick per frame; it needs --glitchscout-time=realtime"
 	Engine.time_scale = float(scale)
 	return null
 

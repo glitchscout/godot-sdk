@@ -315,7 +315,7 @@ func build_manifest() -> Dictionary:
 		"physics_hints": hints,
 		"entity_types": _merged_entity_types(),
 		"events": events.duplicate(),
-		"commands": commands.duplicate(true) + Commands.descriptors(),
+		"commands": _command_descriptors(),
 		"supports": _supports(),
 		"limits": {
 			"max_text_frame_bytes": MAX_TEXT_FRAME_BYTES,
@@ -439,6 +439,16 @@ func _set_state(s: State) -> void:
 		if s in [State.CLOSED, State.REJECTED]:
 			_injection.release_all() # no orchestrator left to let go of anything
 		state_changed.emit(s)
+
+
+## Registered commands, plus any listed by hand in `commands` (registrations win on a name clash).
+func _command_descriptors() -> Array:
+	var out := Commands.descriptors()
+	var names := out.map(func(c): return c.name)
+	for c in commands:
+		if not c.get("name") in names:
+			out.append(c.duplicate(true))
+	return out
 
 
 func _supports() -> Dictionary:

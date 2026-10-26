@@ -106,3 +106,33 @@ func test_commands_go_away_with_the_game() -> void:
 	await _ready_sdk()
 	game.free()
 	assert_str((await _cmd("set_flag", {"name": "x"})).payload.code).is_equal("unknown_command")
+
+
+func test_handler_results_are_made_json_safe() -> void:
+	GlitchscoutSDK.register_command("echo", func(_args: Dictionary): return {"where": Vector3(1, 2, 3), "hp": INF})
+	await _ready_sdk()
+	var m := await _cmd("echo")
+	assert_str(m.message_type).is_equal("ACK")
+	assert_float(m.payload.result.value.where.y).is_equal(2.0)
+	assert_that(m.payload.result.value.hp).is_null()
+
+
+func test_time_scale_is_refused_in_step_mode() -> void:
+	# Called directly: a live step-mode session would hold the main loop, and this main-thread mock with it.
+	var s := auto_free(GlitchscoutSDK.new()) as GlitchscoutSDK
+	s.time_mode = "step"
+	var refusal: Variant = s._commands._builtin_time_scale({"scale": 0.5})
+	assert_bool(refusal is String).is_true()
+	assert_float(Engine.time_scale).is_equal(1.0)
+	s.time_mode = "realtime"
+	assert_that(s._commands._builtin_time_scale({"scale": 0.5})).is_null()
+	assert_float(Engine.time_scale).is_equal(0.5)
+
+
+func test_manifest_lists_each_command_once() -> void:
+	GlitchscoutSDK.register_command("echo", func(_args: Dictionary): return null, "Echoes")
+	start_sdk()
+	sdk.commands.append({"name": "echo"})
+	var hello := await wait_message("HELLO")
+	var names: Array = hello.payload.manifest.commands.map(func(c): return c.name)
+	assert_int(names.count("echo")).is_equal(1)
