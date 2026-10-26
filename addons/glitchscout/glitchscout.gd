@@ -25,6 +25,7 @@ const StepMode := preload("step_mode.gd")
 const InputInjection := preload("input.gd")
 const Observation := preload("observe.gd")
 const UI := preload("ui.gd")
+const Queries := preload("queries.gd")
 const PROTOCOL := "glitchscout/1"
 const SDK_VERSION := "0.1.0"
 const MAX_TEXT_FRAME_BYTES := 262144
@@ -80,6 +81,7 @@ var _step: StepMode
 var _injection: InputInjection
 var _observation: Observation
 var _ui: UI
+var _queries: Queries
 
 
 func _init() -> void:
@@ -87,6 +89,8 @@ func _init() -> void:
 	_injection = InputInjection.new(self)
 	_observation = Observation.new(self)
 	_ui = UI.new(self)
+	_queries = Queries.new(self)
+	register_handler("QUERY", _queries.on_query)
 	register_handler("OBSERVE", _observation.on_observe)
 	register_handler("UI_ACTION", _ui.on_ui_action)
 	register_handler("STEP", _step.on_step)
@@ -204,6 +208,23 @@ func press_for(action: String, ticks: int) -> void:
 	_injection.queue_press(action, ticks)
 
 
+## Uses an AStarGrid2D for navigation queries in a game without navigation regions (null stops). Grid
+## points are world positions (cell * cell_size + offset); paths go through cell centres.
+func use_nav_grid(grid: AStarGrid2D) -> void:
+	_queries.grid = grid
+
+
+## The glitchscout id for a node: its own, or that of its nearest observable ancestor (a collider's
+## parent door, say), else its node path.
+func entity_id(node: Node) -> String:
+	return _observation.entity_id(node)
+
+
+## Every observable entity (interactables, threats, observables) as {id, type, position}.
+func all_entities() -> Array:
+	return _observation.all_entities()
+
+
 ## The UI elements currently in the tree (observation's ui_elements).
 func ui_elements() -> Array:
 	return _ui.elements()
@@ -281,7 +302,7 @@ func build_manifest() -> Dictionary:
 		"entity_types": _merged_entity_types(),
 		"events": events.duplicate(),
 		"commands": commands.duplicate(true),
-		"supports": supports.duplicate(true),
+		"supports": _supports(),
 		"limits": {
 			"max_text_frame_bytes": MAX_TEXT_FRAME_BYTES,
 			"max_binary_frame_bytes": MAX_BINARY_FRAME_BYTES,
@@ -404,6 +425,14 @@ func _set_state(s: State) -> void:
 		if s in [State.CLOSED, State.REJECTED]:
 			_injection.release_all() # no orchestrator left to let go of anything
 		state_changed.emit(s)
+
+
+func _supports() -> Dictionary:
+	var s := supports.duplicate(true)
+	if is_inside_tree():
+		s.navmesh = _queries.has_navmesh()
+		s.nav_links = _queries.has_nav_links()
+	return s
 
 
 func _merged_entity_types() -> Array:

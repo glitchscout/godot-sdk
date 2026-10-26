@@ -164,6 +164,32 @@ func observe(filter: Dictionary) -> Dictionary:
 	return obs
 
 
+## A node's glitchscout id: its own (metadata glitchscout_id, glitchscout_observe().id) or that of its
+## nearest ancestor in an observation group, else its node path.
+func entity_id(node: Node) -> String:
+	var n := node
+	while n != null:
+		if n.has_meta("glitchscout_id"):
+			return str(n.get_meta("glitchscout_id"))
+		var info := _info(n)
+		if info.has("id"):
+			return str(info.id)
+		if n.is_in_group("player") or GROUPS.values().any(func(g): return n.is_in_group(g)):
+			return _id(n, info)
+		n = n.get_parent()
+	return _id(node, {})
+
+
+## Every observable entity as {id, type, position} (no filters).
+func all_entities() -> Array:
+	var out := []
+	for section in GROUPS:
+		for node in sdk.get_tree().get_nodes_in_group(GROUPS[section]):
+			var info := _info(node)
+			out.append({"id": _id(node, info), "type": _text(info.get("type"), section.trim_suffix("s")), "position": _vec(_position(node))})
+	return out
+
+
 func _player_node() -> Node:
 	var players := sdk.get_tree().get_nodes_in_group("player")
 	return players[0] if not players.is_empty() else null
