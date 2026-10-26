@@ -163,3 +163,33 @@ func test_time_mode_and_method_come_from_user_args() -> void:
 func test_manifest_advertises_step_mode() -> void:
 	var s := auto_free(GlitchscoutSDK.new()) as GlitchscoutSDK
 	assert_bool(s.build_manifest().supports.step_mode).is_true()
+
+
+func test_ticks_count_stepped_frames_while_the_game_pauses_itself() -> void:
+	get_tree().paused = true # e.g. the game's pause menu is open
+	_start()
+	var ok: bool = await _run([
+		orch.ack_hello(), orch.wait_ms(100),
+		orch.request("STEP", {"ticks": 1}, "one"), orch.reply_to("one"),
+		orch.request("STEP", {"ticks": 5}, "five"), orch.reply_to("five"),
+		orch.goodbye(),
+	])
+	assert_bool(ok).is_true()
+	var t1 := int(orch.vars.one_reply.payload.result.tick_frame)
+	var t5 := int(orch.vars.five_reply.payload.result.tick_frame)
+	assert_int(t5 - t1).is_equal(5)
+
+
+func test_pause_mode_keeps_the_games_own_pause() -> void:
+	get_tree().paused = true # the game paused itself before the session
+	_start("pause")
+	var ok: bool = await _run([
+		orch.ack_hello(), orch.wait_ms(100), _snap("s0"),
+		orch.request("STEP", {"ticks": 3}, "three"), orch.reply_to("three"), _snap("s3"),
+		orch.goodbye(),
+	])
+	assert_bool(ok).is_true()
+	assert_array(_delta(orch.vars.s0, orch.vars.s3)).is_equal([0, 0]) # the game stayed paused
+	assert_int(int(orch.vars.three_reply.payload.result.frames)).is_equal(3)
+	await get_tree().process_frame
+	assert_bool(get_tree().paused).is_true() # released to the game's own state, not forced on

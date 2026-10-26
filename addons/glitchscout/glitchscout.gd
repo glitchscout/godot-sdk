@@ -30,7 +30,9 @@ const MAX_BINARY_FRAME_BYTES := 4194304
 const OUTBOUND_BUFFER_BYTES := MAX_BINARY_FRAME_BYTES + 64
 
 var state: State = State.DISABLED
-## Physics frames the game has run (paused frames don't count). Every message carries it as tick_frame.
+## Game frames so far: physics frames, minus those spent paused by pause-mode step mode. A pause the game
+## sets itself doesn't stop it, so tick-based timing keeps working in pause menus. Every message carries
+## it as tick_frame.
 var tick := 0
 ## Session id from HELLO_ACK; kept across reconnects so the session can resume.
 var session_id := ""
@@ -138,7 +140,7 @@ func _process(_delta: float) -> void:
 
 
 func _physics_process(_delta: float) -> void:
-	if not get_tree().paused:
+	if not _step.sdk_paused:
 		tick += 1
 
 

@@ -15,6 +15,9 @@ var _pending: Dictionary = {} ## the STEP waiting for its ACK
 var _pending_ticks := 0
 var _hold_started_ms := 0
 var _engaged := false ## holding (or pausing) the game for a session
+## Pause mode: whether the tree is paused by us between steps, and the game's own pause state to put back.
+var sdk_paused := false
+var _game_paused := false
 
 
 func _init(owner: Node) -> void:
@@ -50,13 +53,13 @@ func frame_start() -> void:
 	if budget == 0:
 		_finish_step()
 		if method == "pause":
-			sdk.get_tree().paused = true
+			_pause()
 			return # frames keep running; game nodes don't
 		_hold()
 		if budget == 0:
 			return # released without a step (session over, or the safety valve)
 	if method == "pause":
-		sdk.get_tree().paused = false
+		_unpause()
 	budget -= 1 # the rest of this frame belongs to the game
 
 
@@ -93,5 +96,21 @@ func _hold() -> void:
 
 
 func _release() -> void:
-	if method == "pause" and sdk.is_inside_tree():
-		sdk.get_tree().paused = false
+	if sdk.is_inside_tree():
+		_unpause()
+
+
+## Pauses the tree between steps, remembering whether the game had paused it itself.
+func _pause() -> void:
+	var tree := sdk.get_tree()
+	if not sdk_paused:
+		_game_paused = tree.paused
+		sdk_paused = true
+	tree.paused = true
+
+
+## Gives the tree back to the game in the state it chose: a game that paused itself stays paused.
+func _unpause() -> void:
+	if sdk_paused:
+		sdk.get_tree().paused = _game_paused
+		sdk_paused = false
