@@ -21,6 +21,21 @@ Optional project settings:
 | `glitchscout/axes` | empty | Virtual 2D axes Glitchscout can drive with one analog input, `{name: [negative_x, positive_x, negative_y, positive_y]}` in `Input.get_vector` order, e.g. `{"move": ["move_left", "move_right", "move_forward", "move_back"]}` |
 | `glitchscout/step/method` | `hold` | How step mode makes the game wait between steps: `hold` blocks the main loop (nothing in the game runs or notices); `pause` pauses the scene tree instead, for games where blocking doesn't work |
 
+## What Glitchscout sees
+
+Put nodes in these groups. Each may define `glitchscout_observe() -> Dictionary` to add fields; an `"id"` key
+overrides the node path as its identifier. Glitchscout computes distances from the player itself.
+
+| Group | Is | Fields from `glitchscout_observe()` |
+|---|---|---|
+| `player` | the player (first node in the group) | `health`, `state_flags`; position, velocity (`CharacterBody`/`RigidBody`) and `is_grounded` are read automatically |
+| `glitchscout_interactable` | doors, levers, pickups, NPCs | `type`, `state`, `enabled`, `required_action`, `interaction_range`, `requires` |
+| `glitchscout_threat` | enemies and hazards | `type`, `health`, `attack_range`, `state` |
+| `glitchscout_observable` | anything else worth watching | `type`, plus any other fields (sent as `properties`) |
+
+The current camera is reported too: position, yaw and pitch, and `mode` from `glitchscout/camera_mode` (default
+`third_person`) or the camera's own `glitchscout_observe()`.
+
 ## Input
 
 Glitchscout plays through your InputMap: every action is available, and so is every virtual axis in

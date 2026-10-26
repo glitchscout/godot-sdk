@@ -23,6 +23,7 @@ enum State {
 
 const StepMode := preload("step_mode.gd")
 const InputInjection := preload("input.gd")
+const Observation := preload("observe.gd")
 const PROTOCOL := "glitchscout/1"
 const SDK_VERSION := "0.1.0"
 const MAX_TEXT_FRAME_BYTES := 262144
@@ -76,11 +77,14 @@ var _close_at_ms := -1
 var _crypto := Crypto.new()
 var _step: StepMode
 var _injection: InputInjection
+var _observation: Observation
 
 
 func _init() -> void:
 	_step = StepMode.new(self)
 	_injection = InputInjection.new(self)
+	_observation = Observation.new(self)
+	register_handler("OBSERVE", _observation.on_observe)
 	register_handler("STEP", _step.on_step)
 	register_handler("ACTION_INJECT", _injection.on_inject)
 
@@ -141,6 +145,7 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if _step.frame_start(): # may hold right here until the next STEP
 		_injection.frame_start()
+		_observation.frame_start()
 	poll()
 
 
@@ -211,18 +216,29 @@ func send(message_type: String, payload: Dictionary, reply_to: Variant = null) -
 	if _peer == null or _peer.get_ready_state() != WebSocketPeer.STATE_OPEN:
 		return ""
 	var id := _uuid()
+	_peer.send_text(encode(message_type, payload, reply_to, id))
+	return id
+
+
+## Sends an already encoded message (see [method encode]).
+func send_text(text: String) -> void:
+	if _peer and _peer.get_ready_state() == WebSocketPeer.STATE_OPEN:
+		_peer.send_text(text)
+
+
+## The JSON text of one message (a fresh id unless given), with the current session and tick.
+func encode(message_type: String, payload: Dictionary, reply_to: Variant = null, id := "") -> String:
 	var env := {
 		"protocol": PROTOCOL,
 		"message_type": message_type,
-		"id": id,
+		"id": id if not id.is_empty() else _uuid(),
 		"reply_to": reply_to,
 		"session": session_id if not session_id.is_empty() else null,
 		"tick_frame": tick,
 		"ts": Time.get_unix_time_from_system(),
 		"payload": payload,
 	}
-	_peer.send_text(JSON.stringify(env))
-	return id
+	return JSON.stringify(env)
 
 
 func reply(request: Dictionary, message_type: String, payload: Dictionary) -> void:
@@ -248,11 +264,15 @@ func build_manifest() -> Dictionary:
 		"camera_actions": _strings(_setting("glitchscout/camera_actions", [])),
 		"combat_actions": _strings(_setting("glitchscout/combat_actions", [])),
 		"physics_hints": hints,
-		"entity_types": entity_types.duplicate(),
+		"entity_types": _merged_entity_types(),
 		"events": events.duplicate(),
 		"commands": commands.duplicate(true),
 		"supports": supports.duplicate(true),
-		"limits": {"max_text_frame_bytes": MAX_TEXT_FRAME_BYTES, "max_binary_frame_bytes": MAX_BINARY_FRAME_BYTES},
+		"limits": {
+			"max_text_frame_bytes": MAX_TEXT_FRAME_BYTES,
+			"max_binary_frame_bytes": MAX_BINARY_FRAME_BYTES,
+			"observe_defaults": {"radius": Observation.DEFAULT_RADIUS, "max_n": Observation.DEFAULT_MAX_N},
+		},
 	}
 	var build_id := str(_setting("application/config/version", ""))
 	if not build_id.is_empty():
@@ -370,6 +390,15 @@ func _set_state(s: State) -> void:
 		if s in [State.CLOSED, State.REJECTED]:
 			_injection.release_all() # no orchestrator left to let go of anything
 		state_changed.emit(s)
+
+
+func _merged_entity_types() -> Array:
+	var out: Array = entity_types.duplicate()
+	if is_inside_tree():
+		for t in _observation.entity_types():
+			if not t in out:
+				out.append(t)
+	return out
 
 
 func _input_actions() -> Array:
