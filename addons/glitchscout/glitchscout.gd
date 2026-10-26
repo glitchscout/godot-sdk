@@ -28,6 +28,7 @@ const UI := preload("ui.gd")
 const Queries := preload("queries.gd")
 const Commands := preload("commands.gd")
 const Events := preload("events.gd")
+const Capture := preload("capture.gd")
 const LogTail := preload("log_tail.gd")
 const PROTOCOL := "glitchscout/1"
 const SDK_VERSION := "0.1.0"
@@ -87,6 +88,14 @@ var _ui: UI
 var _queries: Queries
 var _commands: Commands
 var _events: Events
+var _capture: Capture
+## Where CAPTURE gets its image (a Callable returning an Image); unset, the viewport's last rendered frame.
+var capture_source := Callable()
+## The WebSocket send buffer asked for. Frames bigger than what the connection actually has are chunked.
+var outbound_buffer_bytes := OUTBOUND_BUFFER_BYTES
+## How long a queued frame may wait for room in the send buffer before it's dropped.
+var frame_send_timeout_ms := 2000
+var _outbox: Array[Dictionary] = [] ## messages waiting for room in the send buffer: {messages, binary, next, done, deadline}
 var _reset_handler := Callable()
 
 
@@ -98,7 +107,9 @@ func _init() -> void:
 	_queries = Queries.new(self)
 	_commands = Commands.new(self)
 	_events = Events.new(self)
+	_capture = Capture.new(self)
 	register_handler("STATE_CTRL", _on_state_ctrl)
+	register_handler("CAPTURE", _capture.on_capture)
 	register_handler("COMMAND", _commands.on_command)
 	register_handler("QUERY", _queries.on_query)
 	register_handler("OBSERVE", _observation.on_observe)
@@ -213,6 +224,7 @@ func poll() -> void:
 					_next_heartbeat_ms = now + heartbeat_interval_ms
 					send("HEARTBEAT", {"uptime_ms": now - _started_ms})
 				_events.flush()
+				_flush_outbox()
 		WebSocketPeer.STATE_CLOSED:
 			_on_closed(now)
 
@@ -333,14 +345,78 @@ func send(message_type: String, payload: Dictionary, reply_to: Variant = null) -
 	if _peer == null or _peer.get_ready_state() != WebSocketPeer.STATE_OPEN:
 		return ""
 	var id := _uuid()
-	_peer.send_text(encode(message_type, payload, reply_to, id))
+	_put(encode(message_type, payload, reply_to, id).to_utf8_buffer(), false)
 	return id
+
+
+## Queues a binary frame (see capture.gd); done(messages_sent) is called once it's all out, with 0 if it
+## couldn't be sent. A frame bigger than the send buffer (outbound_buffer_bytes, or less if the connection
+## got less) goes as chunks that fit, at most 1 MiB each. Frames leave from poll() as the buffer drains, so
+## sending never blocks the game; one that can't get out within frame_send_timeout_ms is dropped.
+func send_frame(payload: PackedByteArray, f: Dictionary, done: Callable) -> void:
+	var room := _frame_room()
+	if room <= Capture.HEADER_BYTES:
+		done.call(0)
+		return
+	var frames: Array[PackedByteArray] = []
+	if Capture.HEADER_BYTES + payload.size() <= room:
+		frames.append(Capture.encode_frame(payload, f))
+	else:
+		frames = Capture.split(payload, f, mini(Capture.MAX_CHUNK_BYTES, room - Capture.HEADER_BYTES))
+	_outbox.append({"messages": frames, "binary": true, "next": 0, "done": done, "deadline": Time.get_ticks_msec() + frame_send_timeout_ms})
+	_flush_outbox()
+
+
+func _frame_room() -> int:
+	if _peer == null or _peer.get_ready_state() != WebSocketPeer.STATE_OPEN:
+		return 0
+	return mini(_peer.outbound_buffer_size, outbound_buffer_bytes)
+
+
+## Writes a message now, or queues it behind what's already waiting so messages keep their order and none
+## is lost to a full send buffer.
+func _put(bytes: PackedByteArray, binary: bool) -> void:
+	if _outbox.is_empty() and (_fits(bytes.size()) or bytes.size() > _frame_room()):
+		_write(bytes, binary) # one that could never fit is tried anyway, and the peer refuses it
+		return
+	_outbox.append({"messages": [bytes], "binary": binary, "next": 0, "done": Callable(), "deadline": Time.get_ticks_msec() + frame_send_timeout_ms})
+
+
+func _fits(n: int) -> bool:
+	return _peer.get_current_outbound_buffered_amount() + n <= _frame_room()
+
+
+func _write(bytes: PackedByteArray, binary: bool) -> Error:
+	return _peer.send(bytes, WebSocketPeer.WRITE_MODE_BINARY if binary else WebSocketPeer.WRITE_MODE_TEXT)
+
+
+## Sends queued messages while they fit in the send buffer.
+func _flush_outbox() -> void:
+	while not _outbox.is_empty():
+		var sent := _pump(_outbox[0])
+		if sent < 0:
+			return # the buffer is draining; carry on at the next poll
+		var job: Dictionary = _outbox.pop_front()
+		if job.done.is_valid():
+			job.done.call(sent)
+
+
+## Writes what fits of one queued job: its message count once all are out, -1 to wait, 0 if it failed.
+func _pump(job: Dictionary) -> int:
+	while job.next < job.messages.size():
+		var bytes: PackedByteArray = job.messages[job.next]
+		if not _fits(bytes.size()):
+			return -1 if Time.get_ticks_msec() <= job.deadline else 0
+		if _write(bytes, job.binary) != OK:
+			return 0
+		job.next += 1
+	return job.messages.size()
 
 
 ## Sends an already encoded message (see [method encode]).
 func send_text(text: String) -> void:
 	if _peer and _peer.get_ready_state() == WebSocketPeer.STATE_OPEN:
-		_peer.send_text(text)
+		_put(text.to_utf8_buffer(), false)
 
 
 ## The JSON text of one message (a fresh id unless given), with the current session and tick.
@@ -399,7 +475,7 @@ func build_manifest() -> Dictionary:
 
 func _open_socket() -> void:
 	_peer = WebSocketPeer.new()
-	_peer.outbound_buffer_size = OUTBOUND_BUFFER_BYTES
+	_peer.outbound_buffer_size = outbound_buffer_bytes
 	var err := _peer.connect_to_url(_endpoint)
 	if err != OK:
 		push_error("Glitchscout: can't connect to %s: %s" % [_endpoint, error_string(err)])
@@ -481,6 +557,7 @@ func _on_closed(now: int) -> void:
 	var code := _peer.get_close_code()
 	var reason := _peer.get_close_reason()
 	_peer = null
+	_outbox.clear() # their CAPTUREs died with the connection; the orchestrator retries
 	if state == State.HELLO_SENT and code == 1008:
 		# A refusal whose ERROR arrived with the close frame and was lost: the reason carries its code.
 		_reject({"code": reason, "message": "the orchestrator closed the connection: %s" % reason})
@@ -525,6 +602,7 @@ func _supports() -> Dictionary:
 	s.god_mode = s.god_mode or "god_mode" in available
 	s.save_fixtures = s.save_fixtures or "load_save" in available
 	s.seed = s.seed or "set_seed" in available
+	s.screenshots = Capture.available()
 	if is_inside_tree():
 		s.navmesh = _queries.has_navmesh()
 		s.nav_links = _queries.has_nav_links()

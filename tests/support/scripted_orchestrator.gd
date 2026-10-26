@@ -100,6 +100,8 @@ func _poll() -> void:
 			_mutex.lock()
 			_received.append(JSON.parse_string(text))
 			_mutex.unlock()
+		else:
+			MockOrchestrator.save_frame(packet)
 
 
 ## The next message of a type that no step has taken yet, or {}. Steps call it from the thread.
