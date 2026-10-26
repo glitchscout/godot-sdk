@@ -3,6 +3,7 @@ extends CharacterBody3D
 
 @export var speed := 5.0
 @export var jump_velocity := 6.0
+@export var health := 100.0
 
 var max_height := 0.0
 var jumps := 0
@@ -13,6 +14,11 @@ var last_position := Vector3.ZERO
 
 func _ready() -> void:
 	add_to_group("player")
+
+
+## What Glitchscout's observation adds for this node.
+func glitchscout_observe() -> Dictionary:
+	return {"health": health}
 
 
 func _physics_process(delta: float) -> void:

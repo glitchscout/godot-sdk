@@ -4,6 +4,8 @@ extends RefCounted
 ## receives is also saved under res://reports/messages/ so tools/schemacheck can validate it.
 
 const MESSAGES_DIR := "res://reports/messages"
+## Like the orchestrator, accept frames up to the protocol's 4 MiB cap (Godot's default is 64 KiB).
+const INBOUND_BUFFER_BYTES := 4 * 1024 * 1024 + 64
 
 static var _saved := 0
 static var _save_mutex := Mutex.new()
@@ -29,6 +31,7 @@ func endpoint() -> String:
 func poll() -> void:
 	while _tcp.is_listening() and _tcp.is_connection_available():
 		var ws := WebSocketPeer.new()
+		ws.inbound_buffer_size = INBOUND_BUFFER_BYTES
 		ws.accept_stream(_tcp.take_connection())
 		_peers.append(ws)
 		connections += 1

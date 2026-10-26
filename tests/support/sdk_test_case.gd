@@ -47,6 +47,18 @@ func wait_message(message_type: String, nth := 1, timeout_ms := 3000) -> Diction
 	return orch.messages(message_type)[nth - 1] if ok else {}
 
 
+## Sends a request and waits for the message that answers it ({} on timeout).
+func request(message_type: String, payload: Dictionary, timeout_ms := 3000) -> Dictionary:
+	var id := orch.send(message_type, payload)
+	var answer := func() -> Dictionary:
+		for m in orch.received:
+			if m is Dictionary and m.get("reply_to") == id:
+				return m
+		return {}
+	await pump_until(func(): return not answer.call().is_empty(), timeout_ms)
+	return answer.call()
+
+
 ## Runs the handshake to READY with the given session id and returns the HELLO.
 func handshake(session := "s-1") -> Dictionary:
 	var hello := await wait_message("HELLO")

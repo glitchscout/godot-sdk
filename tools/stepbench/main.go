@@ -1,6 +1,7 @@
 // Command stepbench measures the Glitchscout Godot SDK's per-step overhead. It stands in for the
 // orchestrator: listens on loopback, launches Godot on an empty scene with the SDK, completes the
-// handshake and times STEP{ticks:1} round trips. It prints a JSON summary and exits 1 when the median is
+// handshake and times what an orchestrator does every step: an OBSERVE round trip, then a
+// STEP{ticks:1} round trip. It prints a JSON summary and exits 1 when the median is
 // over -max-p50-ms (2 when the benchmark couldn't run).
 //
 //	go run . [-godot PATH] [-project DIR] [-steps 1000] [-max-p50-ms 5]
@@ -108,17 +109,26 @@ func run(ctx context.Context, cfg config) (Summary, error) {
 	}
 	var samples []time.Duration
 	for i := range cfg.warmup + cfg.steps {
-		id := newUUID()
 		start := time.Now()
-		if err := sendID(ctx, conn, id, "STEP", "", map[string]any{"ticks": 1}); err != nil {
-			return fail(err)
-		}
-		reply, err := next(ctx, conn, "", id)
-		if err != nil {
-			return fail(err)
-		}
-		if reply.MessageType != "ACK" {
-			return fail(fmt.Errorf("STEP %d got %s: %s", i, reply.MessageType, reply.Payload))
+		for _, req := range []struct {
+			messageType string
+			payload     map[string]any
+			want        string
+		}{
+			{"OBSERVE", map[string]any{}, "OBSERVATION"},
+			{"STEP", map[string]any{"ticks": 1}, "ACK"},
+		} {
+			id := newUUID()
+			if err := sendID(ctx, conn, id, req.messageType, "", req.payload); err != nil {
+				return fail(err)
+			}
+			reply, err := next(ctx, conn, "", id)
+			if err != nil {
+				return fail(err)
+			}
+			if reply.MessageType != req.want {
+				return fail(fmt.Errorf("%s %d got %s: %s", req.messageType, i, reply.MessageType, reply.Payload))
+			}
 		}
 		if i >= cfg.warmup {
 			samples = append(samples, time.Since(start))

@@ -87,6 +87,7 @@ func _loop() -> void:
 func _poll() -> void:
 	if _peer == null and _tcp.is_connection_available():
 		_peer = WebSocketPeer.new()
+		_peer.inbound_buffer_size = MockOrchestrator.INBOUND_BUFFER_BYTES
 		_peer.accept_stream(_tcp.take_connection())
 	if _peer == null:
 		return
