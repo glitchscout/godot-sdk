@@ -115,7 +115,7 @@ func _path(from: Vector3, to: Vector3) -> Dictionary:
 		var pts := Array(grid.get_point_path(a, b, true)).map(func(v: Vector2): return Vector3(v.x + half.x, v.y + half.y, 0))
 		var links := []
 		links.resize(pts.size())
-		return {"points": pts, "links": links}
+		return {"points": pts, "links": links, "grid": true}
 	return _error("no_navmesh", "the game has no navigation regions and registered no Glitchscout.use_nav_grid() grid")
 
 
@@ -150,8 +150,15 @@ func _link_type(owner: Object, a: Vector3, b: Vector3) -> String:
 	return "drop" if fall > 1.0 else "jump"
 
 
-func _reaches(pts: Array, to: Vector3) -> bool:
-	return not pts.is_empty() and pts.back().distance_to(to) <= REACH_TOLERANCE
+## Whether a path gets to `to`: within REACH_TOLERANCE, or on a grid, into the target's cell (grid paths
+## run through cell centres).
+func _reaches(path: Dictionary, to: Vector3) -> bool:
+	var pts: Array = path.points
+	if pts.is_empty():
+		return false
+	if path.get("grid", false):
+		return _cell(pts.back()) == _cell(to)
+	return pts.back().distance_to(to) <= REACH_TOLERANCE
 
 
 func _nav_path(from: Vector3, to: Vector3) -> Dictionary:
@@ -161,14 +168,14 @@ func _nav_path(from: Vector3, to: Vector3) -> Dictionary:
 	var length := 0.0
 	for i in path.points.size() - 1:
 		length += path.points[i].distance_to(path.points[i + 1])
-	return {"reachable": _reaches(path.points, to), "length": snappedf(length, 0.001), "segments": _segments(path)}
+	return {"reachable": _reaches(path, to), "length": snappedf(length, 0.001), "segments": _segments(path)}
 
 
 func _next_waypoint(from: Vector3, to: Vector3) -> Dictionary:
 	var path := _path(from, to)
 	if path.has("_error"):
 		return path
-	if path.points.size() < 2 or not _reaches(path.points, to):
+	if path.points.size() < 2 or not _reaches(path, to):
 		return {"reachable": false}
 	var seg: Dictionary = _segments(path)[0]
 	return {"reachable": true, "waypoint": seg.to, "link_type": seg.link_type}
@@ -201,7 +208,7 @@ func _nav_sample(p: Dictionary) -> Dictionary:
 			var path := _path(origin, target)
 			if path.has("_error"):
 				return path
-			points.append({"position": _vec(pos), "reachable": on_mesh and _reaches(path.points, target)})
+			points.append({"position": _vec(pos), "reachable": on_mesh and _reaches(path, target)})
 			v += spacing
 		u += spacing
 	return {"points": points}
@@ -233,6 +240,8 @@ func _raycast(p: Dictionary) -> Dictionary:
 	if mask < 0:
 		return _error("invalid_args", "unknown physics layer name in mask %s" % [p.mask])
 	var origin := _v3(p.origin)
+	if _v3(p.direction).is_zero_approx():
+		return _error("invalid_args", "raycast direction is zero")
 	var dir := _v3(p.direction).normalized()
 	var hit := _ray(origin, origin + dir * float(p.max_distance), mask)
 	if hit.is_empty():

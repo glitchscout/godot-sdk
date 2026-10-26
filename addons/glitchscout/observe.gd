@@ -183,10 +183,12 @@ func entity_id(node: Node) -> String:
 ## Every observable entity as {id, type, position} (no filters).
 func all_entities() -> Array:
 	var out := []
+	var defaults := {"interactables": "interactable", "threats": "threat"}
 	for section in GROUPS:
 		for node in sdk.get_tree().get_nodes_in_group(GROUPS[section]):
 			var info := _info(node)
-			out.append({"id": _id(node, info), "type": _text(info.get("type"), section.trim_suffix("s")), "position": _vec(_position(node))})
+			var fallback: String = defaults.get(section, node.get_class().to_lower()) # as OBSERVE reports them
+			out.append({"id": _id(node, info), "type": _text(info.get("type"), fallback), "position": _vec(_position(node))})
 	return out
 
 

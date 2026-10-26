@@ -144,6 +144,8 @@ func test_raycast_hits_and_misses_with_entity_ids_and_masks() -> void:
 	assert_bool(masked.hit).is_true()
 	var bad := await _query("raycast", {"origin": _v(0, 1, 0), "direction": _v(1, 0, 0), "max_distance": 20, "mask": ["no_such_layer"]})
 	assert_str(bad.payload.code).is_equal("invalid_args")
+	var zero := await _query("raycast", {"origin": _v(0, 1, 0), "direction": _v(0, 0, 0), "max_distance": 20})
+	assert_str(zero.payload.code).is_equal("invalid_args")
 
 
 func test_line_of_sight() -> void:
@@ -167,6 +169,9 @@ func test_find_entities_filters() -> void:
 	assert_array(near.entities.map(func(e): return e.id)).contains_exactly_in_any_order(["coin_1", "door"])
 	var ids: Dictionary = (await _query("find_entities", {"ids": ["door"]})).payload.result
 	assert_str(ids.entities[0].type).is_equal("door")
+	_thing("glitchscout_observable", "untyped", Vector3(9, 0, 0))
+	var untyped: Dictionary = (await _query("find_entities", {"ids": ["untyped"]})).payload.result
+	assert_str(untyped.entities[0].type).is_equal("node3d") # the same default OBSERVE reports
 
 
 func test_is_on_screen() -> void:
@@ -209,3 +214,5 @@ func test_without_a_navmesh_nav_queries_fail_clearly_or_use_a_registered_grid() 
 	assert_bool(r.reachable).is_true()
 	assert_bool(r.segments.all(func(s): return s.link_type == "walk")).is_true()
 	assert_bool(r.segments.any(func(s): return s.to.y >= 9.0)).is_true() # went round through the gap
+	var off_centre: Dictionary = (await _query("nav_path", {"from": _v(0.2, 0.7, 0), "to": _v(8.9, 0.1, 0)})).payload.result
+	assert_bool(off_centre.reachable).is_true() # the path reaches the target's cell
