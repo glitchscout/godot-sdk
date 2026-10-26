@@ -22,3 +22,12 @@ func TestCheck(t *testing.T) {
 		t.Fatalf("check = %d, %d, %v; want 2 messages, 1 invalid", n, bad, err)
 	}
 }
+
+func TestRequireMessages(t *testing.T) {
+	if err := run([]string{"-min", "1", t.TempDir()}); err == nil {
+		t.Fatal("an empty directory passed with -min 1")
+	}
+	if err := run([]string{t.TempDir()}); err != nil {
+		t.Fatalf("an empty directory without -min: %v", err)
+	}
+}

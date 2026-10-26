@@ -1,11 +1,13 @@
 // Command schemacheck validates JSON protocol messages captured from the SDK's tests against the
 // glitchscout/1 schemas in github.com/glitchscout/protocol.
 //
-//	go run . <dir>   # every *.json file in dir must be a valid message
+//	go run . [-min n] <dir>   # every *.json file in dir must be a valid message; -min requires n of them
 package main
 
 import (
 	"bytes"
+	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,19 +18,33 @@ import (
 )
 
 func main() {
-	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: schemacheck <dir>")
-		os.Exit(2)
-	}
-	n, bad, err := check(os.Args[1])
-	if err != nil {
+	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, "schemacheck:", err)
-		os.Exit(2)
-	}
-	fmt.Printf("schemacheck: %d messages, %d invalid\n", n, bad)
-	if bad > 0 {
 		os.Exit(1)
 	}
+}
+
+func run(args []string) error {
+	fs := flag.NewFlagSet("schemacheck", flag.ContinueOnError)
+	minMessages := fs.Int("min", 0, "fail unless at least this many messages were captured")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return errors.New("usage: schemacheck [-min n] <dir>")
+	}
+	n, bad, err := check(fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	fmt.Printf("schemacheck: %d messages, %d invalid\n", n, bad)
+	switch {
+	case bad > 0:
+		return fmt.Errorf("%d invalid messages", bad)
+	case n < *minMessages:
+		return fmt.Errorf("only %d messages captured, want at least %d: is the test mock still saving them?", n, *minMessages)
+	}
+	return nil
 }
 
 func check(dir string) (n, bad int, err error) {

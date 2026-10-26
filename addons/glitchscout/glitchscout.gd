@@ -104,8 +104,11 @@ func _process(_delta: float) -> void:
 
 
 func _exit_tree() -> void:
-	if _peer:
-		_peer.close()
+	if _peer == null:
+		return
+	# The game is going away: say so, so the session ends now instead of waiting out a resume window.
+	goodbye("game_exit")
+	_peer = null # freeing the peer drops the socket; an explicit close could lose the GOODBYE
 
 
 ## Services the connection: reads requests, sends HELLO and heartbeats, reconnects after a drop.
@@ -137,6 +140,16 @@ func poll() -> void:
 				send("HEARTBEAT", {"uptime_ms": now - _started_ms})
 		WebSocketPeer.STATE_CLOSED:
 			_on_closed(now)
+
+
+## Ends the session from the game's side with GOODBYE (sent automatically when the node leaves the tree).
+func goodbye(reason: String) -> void:
+	if state != State.READY or _peer == null or _peer.get_ready_state() != WebSocketPeer.STATE_OPEN:
+		return
+	send("GOODBYE", {"reason": reason})
+	_peer.poll() # flush now: the game may be quitting
+	_set_state(State.CLOSED)
+	_close_at_ms = Time.get_ticks_msec() + 100
 
 
 ## Registers the handler for one request type. It receives the parsed message and replies with
@@ -289,7 +302,9 @@ func _on_closed(now: int) -> void:
 		return
 	match state:
 		State.READY, State.HELLO_SENT:
-			_dropped_ms = now
+			# The window runs from the first drop: a reconnect that fails mid-handshake doesn't restart it.
+			if state == State.READY or _dropped_ms == 0:
+				_dropped_ms = now
 			_next_connect_ms = now + reconnect_interval_ms
 			_set_state(State.RECONNECTING if not session_id.is_empty() else State.CONNECTING)
 		State.CONNECTING, State.RECONNECTING: # this attempt failed; poll retries until the window ends

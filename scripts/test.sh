@@ -16,7 +16,11 @@ mkdir -p reports/messages
 # Import once so class_name caches exist for the test runner.
 "$GODOT" --headless --path . --import >/dev/null 2>&1 || true
 
-(( $# )) || set -- -a res://tests
+min_messages=0
+if (( $# == 0 )); then
+  set -- -a res://tests
+  min_messages=1 # the full suite always talks to the mock orchestrator
+fi
 set +e
 "$GODOT" --headless --path . -s -d --remote-debug tcp://127.0.0.1:0 \
   res://addons/gdUnit4/bin/GdUnitCmdTool.gd --ignoreHeadlessMode -c -rd res://reports "$@"
@@ -33,7 +37,7 @@ read -r total failed < <(awk '
 passed=$((total - failed))
 
 schema_status=0
-(cd tools/schemacheck && go run . ../../reports/messages) || schema_status=$?
+(cd tools/schemacheck && go run . -min "$min_messages" ../../reports/messages) || schema_status=$?
 
 if (( status == 0 && failed == 0 && schema_status == 0 )); then
   echo "GREEN $passed/$total"

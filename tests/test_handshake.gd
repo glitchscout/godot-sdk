@@ -128,3 +128,31 @@ func test_registered_handlers_answer_requests() -> void:
 	assert_dict(ack).is_not_empty()
 	assert_str(ack.reply_to).is_equal(id)
 	assert_str(ack.payload.result.value).is_equal("ping")
+
+
+func test_failed_handshakes_do_not_extend_the_resume_window() -> void:
+	start_sdk()
+	sdk.resume_window_ms = 400
+	await handshake()
+	orch.drop()
+	# Every reconnect gets as far as HELLO and is then dropped again; the window must still run out.
+	var answered := [1]
+	var closed: bool = await pump_until(func():
+		var hellos := orch.messages("HELLO").size()
+		if hellos > answered[0]:
+			answered[0] = hellos
+			orch.drop()
+		return sdk.state == GlitchscoutSDK.State.CLOSED, 4000)
+	assert_bool(closed).is_true()
+
+
+func test_says_goodbye_when_the_game_exits() -> void:
+	# _exit_tree calls goodbye(). Freeing the node here would also drop the socket, and the mock's Godot
+	# WebSocketPeer loses a message that arrives with the drop, so the test calls goodbye() directly.
+	start_sdk()
+	await handshake()
+	sdk.goodbye("game_exit")
+	assert_int(sdk.state).is_equal(GlitchscoutSDK.State.CLOSED)
+	var bye := await wait_message("GOODBYE")
+	assert_dict(bye).is_not_empty()
+	assert_str(bye.payload.reason).is_equal("game_exit")
