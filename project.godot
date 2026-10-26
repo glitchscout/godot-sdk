@@ -15,3 +15,9 @@ Glitchscout="*res://addons/glitchscout/glitchscout.gd"
 
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
+
+[gdunit4]
+
+; GdUnit4 times tests in game time. Tests run at --fixed-fps 60 headless, far faster than real time, so its
+; 5-minute default expires in about a second; the CI job timeout bounds wall time instead.
+settings/test/test_timeout_seconds=86400000

@@ -17,10 +17,13 @@ func after_test() -> void:
 	orch.stop()
 
 
+## Starts an SDK against the main-thread mock. It runs in realtime mode: step mode would hold the main
+## loop, and with it this mock (use ScriptedOrchestrator for that).
 func start_sdk(token := "tok") -> GlitchscoutSDK:
 	sdk = GlitchscoutSDK.new()
 	sdk.quit_on_goodbye = false
 	sdk.reconnect_interval_ms = 50
+	sdk.time_mode = "realtime"
 	sdk.configure(orch.endpoint(), token)
 	add_child(sdk)
 	return sdk

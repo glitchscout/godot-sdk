@@ -22,7 +22,8 @@ if (( $# == 0 )); then
   min_messages=1 # the full suite always talks to the mock orchestrator
 fi
 set +e
-"$GODOT" --headless --path . -s -d --remote-debug tcp://127.0.0.1:0 \
+# Step-mode conditions: a fixed 60 fps (one physics tick per frame) and no audio device.
+"$GODOT" --headless --fixed-fps 60 --audio-driver Dummy --path . -s -d --remote-debug tcp://127.0.0.1:0 \
   res://addons/gdUnit4/bin/GdUnitCmdTool.gd --ignoreHeadlessMode -c -rd res://reports "$@"
 status=$?
 set -e

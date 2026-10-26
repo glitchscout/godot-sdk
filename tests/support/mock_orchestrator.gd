@@ -6,6 +6,7 @@ extends RefCounted
 const MESSAGES_DIR := "res://reports/messages"
 
 static var _saved := 0
+static var _save_mutex := Mutex.new()
 
 var received: Array = [] ## parsed messages from the SDK, in arrival order, across connections
 var connections := 0
@@ -38,7 +39,7 @@ func poll() -> void:
 			if not ws.was_string_packet():
 				continue
 			var text := packet.get_string_from_utf8()
-			_save(text)
+			save_message(text)
 			received.append(JSON.parse_string(text))
 
 
@@ -69,9 +70,14 @@ func stop() -> void:
 	_tcp.stop()
 
 
-func _save(text: String) -> void:
+## Saves one message the SDK sent for tools/schemacheck. Safe to call from any thread.
+static func save_message(text: String) -> void:
+	_save_mutex.lock()
 	_saved += 1
-	var path := "%s/%d-%05d.json" % [MESSAGES_DIR, OS.get_process_id(), _saved]
+	var n := _saved
+	_save_mutex.unlock()
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(MESSAGES_DIR))
+	var path := "%s/%d-%05d.json" % [MESSAGES_DIR, OS.get_process_id(), n]
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	if f:
 		f.store_string(text)

@@ -21,6 +21,7 @@ enum State {
 	CLOSED, ## the session ended (GOODBYE, or no resume within [member resume_window_ms])
 }
 
+const StepMode := preload("step_mode.gd")
 const PROTOCOL := "glitchscout/1"
 const SDK_VERSION := "0.1.0"
 const MAX_TEXT_FRAME_BYTES := 262144
@@ -29,6 +30,8 @@ const MAX_BINARY_FRAME_BYTES := 4194304
 const OUTBOUND_BUFFER_BYTES := MAX_BINARY_FRAME_BYTES + 64
 
 var state: State = State.DISABLED
+## Physics frames the game has run (paused frames don't count). Every message carries it as tick_frame.
+var tick := 0
 ## Session id from HELLO_ACK; kept across reconnects so the session can resume.
 var session_id := ""
 ## The last error the orchestrator reported, as {code, message}.
@@ -41,10 +44,17 @@ var reconnect_interval_ms := 500
 var resume_window_ms := 30000
 ## Capabilities advertised in the manifest. Each SDK feature switches its own on.
 var supports := {
-	"step_mode": false, "reset_tiers": [], "navmesh": false, "nav_links": false, "ui_tree": false,
+	"step_mode": true, "reset_tiers": [], "navmesh": false, "nav_links": false, "ui_tree": false,
 	"screenshots": false, "seed": false, "save_fixtures": false, "god_mode": false,
 }
 ## Debug commands, events and entity types the game registered, for the manifest.
+## "step" holds the game between STEPs; "realtime" lets it run (--glitchscout-time).
+var time_mode := "step"
+## How step mode holds the game: "hold" (block the main loop) or "pause" (pause the tree). Empty means
+## the project setting glitchscout/step/method (default "hold"); --glitchscout-step-method overrides it.
+var step_method := ""
+## Stop holding after this long without a STEP (0 = never; a safety valve for tests).
+var max_hold_ms := 0
 var commands: Array[Dictionary] = []
 var events: Array[String] = []
 var entity_types: Array[String] = []
@@ -61,16 +71,26 @@ var _next_connect_ms := 0
 var _dropped_ms := 0
 var _close_at_ms := -1
 var _crypto := Crypto.new()
+var _step: StepMode
+
+
+func _init() -> void:
+	_step = StepMode.new(self)
+	register_handler("STEP", _step.on_step)
 
 
 ## Reads the endpoint and token from the user arguments that follow [code]--[/code].
 static func parse_args(args: PackedStringArray) -> Dictionary:
-	var out := {"endpoint": "", "token": ""}
+	var out := {"endpoint": "", "token": "", "time": "", "step_method": ""}
 	for a in args:
 		if a.begins_with("--glitchscout-endpoint="):
 			out.endpoint = a.trim_prefix("--glitchscout-endpoint=")
 		elif a.begins_with("--glitchscout-token="):
 			out.token = a.trim_prefix("--glitchscout-token=")
+		elif a.begins_with("--glitchscout-time="):
+			out.time = a.trim_prefix("--glitchscout-time=")
+		elif a.begins_with("--glitchscout-step-method="):
+			out.step_method = a.trim_prefix("--glitchscout-step-method=")
 	return out
 
 
@@ -84,6 +104,10 @@ func configure(endpoint: String, token: String) -> void:
 func configure_from_args(args: PackedStringArray) -> void:
 	var parsed := parse_args(args)
 	configure(parsed.endpoint, parsed.token)
+	if not parsed.time.is_empty():
+		time_mode = parsed.time
+	if not parsed.step_method.is_empty():
+		step_method = parsed.step_method
 
 
 func _ready() -> void:
@@ -92,6 +116,15 @@ func _ready() -> void:
 	if not _configured:
 		configure_from_args(OS.get_cmdline_user_args())
 	_started_ms = Time.get_ticks_msec()
+	if step_method.is_empty():
+		step_method = str(_setting("glitchscout/step/method", "hold"))
+	if not step_method in ["hold", "pause"]:
+		push_warning("Glitchscout: unknown step method '%s', using hold" % step_method)
+		step_method = "hold"
+	if not time_mode in ["step", "realtime"]:
+		push_warning("Glitchscout: unknown time mode '%s', using step" % time_mode)
+		time_mode = "step"
+	_step.method = step_method
 	if _endpoint.is_empty():
 		return
 	_dropped_ms = _started_ms
@@ -100,10 +133,17 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
+	_step.frame_start() # may hold right here until the next STEP
 	poll()
 
 
+func _physics_process(_delta: float) -> void:
+	if not get_tree().paused:
+		tick += 1
+
+
 func _exit_tree() -> void:
+	_step.release()
 	if _peer == null:
 		return
 	# The game is going away: say so, so the session ends now instead of waiting out a resume window.
@@ -169,7 +209,7 @@ func send(message_type: String, payload: Dictionary, reply_to: Variant = null) -
 		"id": id,
 		"reply_to": reply_to,
 		"session": session_id if not session_id.is_empty() else null,
-		"tick_frame": Engine.get_physics_frames(),
+		"tick_frame": tick,
 		"ts": Time.get_unix_time_from_system(),
 		"payload": payload,
 	}
@@ -225,7 +265,7 @@ func _open_socket() -> void:
 func _send_hello() -> void:
 	var payload := {"token": _token, "protocol_versions": [PROTOCOL], "manifest": build_manifest()}
 	if not session_id.is_empty():
-		payload.resume = {"session": session_id, "last_tick": Engine.get_physics_frames()}
+		payload.resume = {"session": session_id, "last_tick": tick}
 	_hello_id = send("HELLO", payload)
 	_set_state(State.HELLO_SENT)
 
