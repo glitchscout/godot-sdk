@@ -19,7 +19,7 @@ const GROUPS := {
 }
 const INTERACTABLE_KEYS := ["type", "state", "enabled", "required_action", "interaction_range", "requires"]
 const THREAT_KEYS := ["type", "health", "attack_range", "state"]
-const SECTIONS := ["player", "interactables", "camera", "threats", "entities"]
+const SECTIONS := ["player", "interactables", "camera", "threats", "ui_elements", "entities"]
 
 var sdk: Node
 
@@ -77,8 +77,8 @@ func entity_types() -> Array[String]:
 	return seen
 
 
-## Encodes an OBSERVATION or STATE_UPDATE, dropping the farthest entities, then interactables, then threats
-## until it fits the cap. Returns "" when even that isn't enough (never an oversized frame).
+## Encodes an OBSERVATION or STATE_UPDATE, dropping the farthest entities, then interactables, then threats,
+## then (in tree order) UI elements, until it fits the cap. Returns "" when even that isn't enough (never an oversized frame).
 func _fit(message_type: String, filter: Dictionary, reply_to: Variant, mode: String) -> String:
 	var cap := int(filter.get("max_bytes", sdk.MAX_TEXT_FRAME_BYTES))
 	var present := observe(filter)
@@ -93,7 +93,7 @@ func _fit(message_type: String, filter: Dictionary, reply_to: Variant, mode: Str
 	while text.to_utf8_buffer().size() > cap:
 		obs.truncated = true
 		var cut := false
-		for section in ["entities", "interactables", "threats"]:
+		for section in ["entities", "interactables", "threats", "ui_elements"]: # UI last: it's not by distance
 			var arr: Array = obs.get(section, [])
 			if not arr.is_empty():
 				obs[section] = arr.slice(0, arr.size() * 9 / 10)
@@ -112,7 +112,7 @@ func _state_payload(obs: Dictionary, present: Dictionary, mode: String) -> Dicti
 	for it in present.get("interactables", []):
 		current[it.id] = it.get("state", "")
 	var p := {"mode": mode}
-	for k in ["player", "camera", "threats", "truncated"]:
+	for k in ["player", "camera", "threats", "ui_elements", "truncated"]:
 		if obs.has(k):
 			p[k] = obs[k]
 	if mode == "full":
@@ -147,6 +147,8 @@ func observe(filter: Dictionary) -> Dictionary:
 		var cam := _camera()
 		if not cam.is_empty():
 			obs.camera = cam
+	if "ui_elements" in sections:
+		obs.ui_elements = sdk.ui_elements()
 	for section in GROUPS:
 		if not section in sections:
 			continue
