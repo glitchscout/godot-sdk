@@ -128,7 +128,11 @@ func test_a_step_while_one_runs_is_refused() -> void:
 	_start()
 	var ok: bool = await _run([
 		orch.ack_hello(), orch.wait_ms(100),
-		orch.request("STEP", {"ticks": 60}, "long"), orch.request("STEP", {"ticks": 2}, "extra"),
+		# Both in one step: a poll between them (parsing whatever the SDK sent meanwhile) could outlast the
+		# 60 frames, and then "extra" would arrive after "long" had finished.
+		orch.call_once(func():
+			orch.vars.long = orch.send("STEP", {"ticks": 60})
+			orch.vars.extra = orch.send("STEP", {"ticks": 2})),
 		orch.reply_to("extra"), orch.reply_to("long"),
 		orch.goodbye(),
 	])
