@@ -64,7 +64,10 @@ sampling at the start of a frame, before idle-processed nodes have run, not from
      600 times in 10 s of game time.
    - In hold mode nothing in the game runs between steps, so there is nothing to leak.
 3. **Hold mode keeps a headed window responsive** with `DisplayServer.process_events()`. The largest gap
-   between pumps was 24 ms, far below the seconds it takes macOS to mark an app "not responding".
+   between pumps was 24 ms untouched. A maintainer watched a 30 s run (`--hold-ms=200 --steps=150`) and
+   dragged the window: it stayed responsive throughout. Dragging stretched one pump to 396 ms, because macOS
+   runs its own event loop for the duration of a window drag. That only lengthens the wait, never game time,
+   and is far below the seconds it takes macOS to mark an app "not responding".
 4. **Hold mode is faster headed:** 14.6 s against 22.0 s for 600 steps. Each pause-mode step costs
    at least two displayed frames.
 5. **Audio can't follow stepped time in either mode.** Underruns appear whenever audio mixes in real time
