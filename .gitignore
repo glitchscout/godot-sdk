@@ -1,0 +1,10 @@
+# Godot
+.godot/
+*.import
+export_presets.cfg
+# Test tooling installed by scripts/install_gdunit4.sh, and its output
+addons/gdUnit4/
+reports/
+GdUnitRunner.cfg
+# OS
+.DS_Store

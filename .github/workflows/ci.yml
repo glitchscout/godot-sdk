@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/schemacheck/go.mod
+          cache-dependency-path: tools/schemacheck/go.sum
+      - name: Read the pinned Godot version
+        id: godot
+        run: echo "version=$(cat .godot-version)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        id: godot-cache
+        with:
+          path: ~/godot
+          key: godot-${{ steps.godot.outputs.version }}-linux-x86_64
+      - if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: scripts/install_godot.sh ~/godot
+      - name: GdUnit4 suites and protocol schema check
+        run: GODOT_BIN=~/godot/godot scripts/test.sh
+      - name: schemacheck's own tests
+        working-directory: tools/schemacheck
+        run: go vet ./... && go test ./... && test -z "$(gofmt -l .)"
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gdunit-reports
+          path: reports/
