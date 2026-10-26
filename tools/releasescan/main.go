@@ -40,14 +40,15 @@ func run(args []string) error {
 		return errors.New("usage: releasescan [-expect-sdk] <pack>...")
 	}
 	for _, path := range fs.Args() {
-		hits, err := scan(path)
+		data, err := contents(path)
 		if err != nil {
 			return err
 		}
+		hits := found(data)
 		switch {
 		case *expectSDK && len(hits) == 0:
 			return fmt.Errorf("%s: no SDK found, but this build should contain it", path)
-		case *expectSDK && !hasAutoload(path):
+		case *expectSDK && !bytes.Contains(data, []byte(autoload)):
 			return fmt.Errorf("%s: the SDK files are there but its %s setting isn't, so it would never start", path, autoload)
 		case !*expectSDK && len(hits) > 0:
 			return fmt.Errorf("%s: the Glitchscout SDK is in a shipping build: %q", path, hits)
@@ -57,15 +58,24 @@ func run(args []string) error {
 	return nil
 }
 
-// scan returns the SDK markers found in a pack: an uncompressed .pck or executable, or a .zip export,
-// whose deflated entries are read one by one (their names stand for res:// paths).
+// scan returns the SDK markers found in a pack.
 func scan(path string) ([]string, error) {
+	data, err := contents(path)
+	if err != nil {
+		return nil, err
+	}
+	return found(data), nil
+}
+
+// contents returns what a pack holds: an uncompressed .pck or executable as it is, or a .zip export's
+// entries inflated one by one, each preceded by its res:// path.
+func contents(path string) ([]byte, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 	if !bytes.HasPrefix(data, []byte("PK\x03\x04")) {
-		return found(data), nil
+		return data, nil
 	}
 	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
@@ -85,7 +95,7 @@ func scan(path string) ([]string, error) {
 		}
 		all = append(all, b...)
 	}
-	return found(all), nil
+	return all, nil
 }
 
 func found(data []byte) []string {
@@ -96,9 +106,4 @@ func found(data []byte) []string {
 		}
 	}
 	return hits
-}
-
-func hasAutoload(path string) bool {
-	data, err := os.ReadFile(path)
-	return err == nil && bytes.Contains(data, []byte(autoload))
 }

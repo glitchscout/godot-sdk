@@ -12,8 +12,8 @@ const MAX_LOGS_PER_FRAME := 200
 const MAX_TAIL_BACKLOG := 2000
 ## Longest log message sent; longer ones are cut (frames must stay under the manifest's max_text_frame_bytes).
 const MAX_MESSAGE_CHARS := 8192
-## Largest game event data, as JSON; bigger data is replaced by {"truncated": true, "bytes": n}.
-const MAX_DATA_BYTES := 65536
+## Largest game event data, in characters of JSON; bigger data is replaced by {"truncated": true, "chars": n}.
+const MAX_DATA_CHARS := 65536
 
 var sdk: Node
 
@@ -61,7 +61,7 @@ func event(name: String, data: Dictionary) -> void:
 	if not data.is_empty():
 		var clean: Variant = Observation._clean(data)
 		var size := JSON.stringify(clean).length()
-		payload.data = clean if size <= MAX_DATA_BYTES else {"truncated": true, "bytes": size}
+		payload.data = clean if size <= MAX_DATA_CHARS else {"truncated": true, "chars": size}
 	_queue(payload)
 
 

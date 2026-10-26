@@ -2,8 +2,10 @@ package main
 
 import (
 	"archive/zip"
+	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -67,5 +69,34 @@ func TestExpectSDKNeedsTheAutoloadToo(t *testing.T) {
 	}
 	if err := run([]string{"-expect-sdk", full}); err != nil {
 		t.Errorf("run(-expect-sdk) = %v on a complete QA pack", err)
+	}
+}
+
+func TestExpectSDKFindsTheAutoloadInAZipExport(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "qa.zip")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw := zip.NewWriter(f)
+	for name, body := range map[string]string{
+		"addons/glitchscout/glitchscout.gdc": "class_name GlitchscoutSDK class_name GlitchscoutSDK",
+		".godot/project.binary":              "autoload/Glitchscout *res://addons/glitchscout/glitchscout.gd autoload/Glitchscout",
+	} {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = w.Write([]byte(strings.Repeat(body+" ", 200))) // compressible, so it's really deflated
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+	if raw, _ := os.ReadFile(path); bytes.Contains(raw, []byte("autoload/Glitchscout")) {
+		t.Fatal("the test zip isn't compressed")
+	}
+	if err := run([]string{"-expect-sdk", path}); err != nil {
+		t.Errorf("run(-expect-sdk) = %v on a complete QA zip", err)
 	}
 }

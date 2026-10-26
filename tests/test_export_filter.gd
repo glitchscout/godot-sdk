@@ -10,6 +10,8 @@ func test_a_preset_excludes_the_sdk_only_when_its_filter_covers_the_addon() -> v
 	assert_bool(ExportFilter.excludes_sdk("tests/*,addons/*")).is_true()
 	assert_bool(ExportFilter.excludes_sdk("addons/gdUnit4/*, tests/*")).is_false()
 	assert_bool(ExportFilter.excludes_sdk("")).is_false()
+	assert_bool(ExportFilter.excludes_sdk("*.gd")).is_true() # Godot also matches globs against the file name
+	assert_bool(ExportFilter.excludes_sdk("*.png")).is_false()
 
 
 func test_shipping_settings_drop_the_autoload_and_only_the_sdks_plugin_entry() -> void:
