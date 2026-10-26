@@ -19,7 +19,7 @@ const GROUPS := {
 }
 const INTERACTABLE_KEYS := ["type", "state", "enabled", "required_action", "interaction_range", "requires"]
 const THREAT_KEYS := ["type", "health", "attack_range", "state"]
-const SECTIONS := ["player", "interactables", "camera", "threats", "entities"]
+const SECTIONS := ["player", "interactables", "camera", "threats", "ui_elements", "entities"]
 
 var sdk: Node
 
@@ -112,7 +112,7 @@ func _state_payload(obs: Dictionary, present: Dictionary, mode: String) -> Dicti
 	for it in present.get("interactables", []):
 		current[it.id] = it.get("state", "")
 	var p := {"mode": mode}
-	for k in ["player", "camera", "threats", "truncated"]:
+	for k in ["player", "camera", "threats", "ui_elements", "truncated"]:
 		if obs.has(k):
 			p[k] = obs[k]
 	if mode == "full":
@@ -147,6 +147,8 @@ func observe(filter: Dictionary) -> Dictionary:
 		var cam := _camera()
 		if not cam.is_empty():
 			obs.camera = cam
+	if "ui_elements" in sections:
+		obs.ui_elements = sdk.ui_elements()
 	for section in GROUPS:
 		if not section in sections:
 			continue

@@ -24,6 +24,7 @@ enum State {
 const StepMode := preload("step_mode.gd")
 const InputInjection := preload("input.gd")
 const Observation := preload("observe.gd")
+const UI := preload("ui.gd")
 const PROTOCOL := "glitchscout/1"
 const SDK_VERSION := "0.1.0"
 const MAX_TEXT_FRAME_BYTES := 262144
@@ -48,7 +49,7 @@ var reconnect_interval_ms := 500
 var resume_window_ms := 30000
 ## Capabilities advertised in the manifest. Each SDK feature switches its own on.
 var supports := {
-	"step_mode": true, "reset_tiers": [], "navmesh": false, "nav_links": false, "ui_tree": false,
+	"step_mode": true, "reset_tiers": [], "navmesh": false, "nav_links": false, "ui_tree": true,
 	"screenshots": false, "seed": false, "save_fixtures": false, "god_mode": false,
 }
 ## Debug commands, events and entity types the game registered, for the manifest.
@@ -78,13 +79,16 @@ var _crypto := Crypto.new()
 var _step: StepMode
 var _injection: InputInjection
 var _observation: Observation
+var _ui: UI
 
 
 func _init() -> void:
 	_step = StepMode.new(self)
 	_injection = InputInjection.new(self)
 	_observation = Observation.new(self)
+	_ui = UI.new(self)
 	register_handler("OBSERVE", _observation.on_observe)
+	register_handler("UI_ACTION", _ui.on_ui_action)
 	register_handler("STEP", _step.on_step)
 	register_handler("ACTION_INJECT", _injection.on_inject)
 
@@ -193,6 +197,16 @@ func poll() -> void:
 				send("HEARTBEAT", {"uptime_ms": now - _started_ms})
 		WebSocketPeer.STATE_CLOSED:
 			_on_closed(now)
+
+
+## Presses an action for exactly ticks game frames (used by UI_ACTION's ui_accept).
+func press_for(action: String, ticks: int) -> void:
+	_injection.queue_press(action, ticks)
+
+
+## The UI elements currently in the tree (observation's ui_elements).
+func ui_elements() -> Array:
+	return _ui.elements()
 
 
 ## Ends the session from the game's side with GOODBYE (sent automatically when the node leaves the tree).

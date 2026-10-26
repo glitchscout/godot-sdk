@@ -86,6 +86,11 @@ func on_inject(msg: Dictionary) -> void:
 	sdk.reply(msg, "ACK", {"result": {"tick_frame": sdk.tick}})
 
 
+## Queues a press of action for exactly ticks game frames.
+func queue_press(action: String, ticks: int) -> void:
+	_queue.append([action, true, 1.0, ticks])
+
+
 func _axis(negative: String, positive: String, v: float) -> Array:
 	return [[negative, v < 0.0, maxf(-v, 0.0), 0], [positive, v > 0.0, maxf(v, 0.0), 0]]
 
