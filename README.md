@@ -36,6 +36,20 @@ overrides the node path as its identifier. Glitchscout computes distances from t
 The current camera is reported too: position, yaw and pitch, and `mode` from `glitchscout/camera_mode` (default
 `third_person`) or the camera's own `glitchscout_observe()`.
 
+## Navigation
+
+Glitchscout plans routes with your `NavigationRegion3D`/`2D` navmesh. Mark how each `NavigationLink3D`/`2D`
+is crossed with the `glitchscout_link_type` metadata: `walk`, `jump`, `drop`, `ladder` or `teleport`. Without it,
+a link that falls more than one unit counts as `drop`, and any other as `jump`.
+
+**No navmesh?** A grid-based game can call `Glitchscout.use_nav_grid(grid)` with an `AStarGrid2D` whose points are
+world positions (`cell * cell_size + offset`). Glitchscout then plans walking paths through cell centres. With
+neither, navigation queries fail with `no_navmesh` and the manifest reports `navmesh: false`, so Glitchscout
+explores without a map.
+
+Raycasts take physics layer names (Project Settings → Layer Names). A hit reports the `glitchscout_id`
+(metadata) of the collider or of its nearest observable ancestor.
+
 ## UI
 
 Glitchscout sees buttons, check boxes, option buttons, line edits, sliders, spin boxes and labels, plus any

@@ -111,7 +111,8 @@ func test_goodbye_is_echoed_and_asks_to_quit() -> void:
 func test_unsupported_request_gets_an_error_reply() -> void:
 	start_sdk()
 	await handshake()
-	var id := orch.send("QUERY", {"kind": "raycast", "params": {}})
+	sdk.register_handler("QUERY", Callable()) # as if no feature handled QUERY
+	var id := orch.send("QUERY", {"kind": "raycast", "params": {"origin": {"x": 0, "y": 0, "z": 0}, "direction": {"x": 1, "y": 0, "z": 0}, "max_distance": 1}})
 	var err := await wait_message("ERROR")
 	assert_dict(err).is_not_empty()
 	assert_str(err.reply_to).is_equal(id)
