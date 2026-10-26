@@ -4,6 +4,8 @@ extends CharacterBody3D
 @export var speed := 5.0
 @export var jump_velocity := 6.0
 @export var health := 100.0
+## Set by the god_mode command: damage does nothing.
+var invulnerable := false
 
 var max_height := 0.0
 var jumps := 0

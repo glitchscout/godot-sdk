@@ -36,6 +36,27 @@ overrides the node path as its identifier. Glitchscout computes distances from t
 The current camera is reported too: position, yaw and pitch, and `mode` from `glitchscout/camera_mode` (default
 `third_person`) or the camera's own `glitchscout_observe()`.
 
+## Debug commands
+
+Glitchscout sets up tests with debug commands, and runs only the ones you register (plus four built-ins):
+
+```gdscript
+var gs := get_node_or_null("/root/Glitchscout")  # null in a build without the addon
+if gs:
+    gs.register_command("give_item", _give_item, "Adds items to the inventory", {"item": "string", "count": "int"})
+
+func _give_item(args: Dictionary) -> Variant:
+    if not args.has("item"):
+        return "give_item needs an item"  # a String refuses the command with that message
+    inventory.add(args.item, args.get("count", 1))
+    return null                           # null or true: done; a Dictionary: done, sent back as the result
+```
+
+The recommended standard set is `set_flag {name, value}`, `god_mode {enabled}`, `load_save {slot | path}`,
+`give_item {item, count}` and `set_time {time}`. Built in, and replaced by a registration of the same name:
+`teleport {position}`, `load_scene {scene}`, `set_seed {seed}` and `time_scale {scale}`. Unregister commands when
+the node that handles them leaves the tree.
+
 ## Navigation
 
 Glitchscout plans routes with your `NavigationRegion3D`/`2D` navmesh. Mark how each `NavigationLink3D`/`2D`
