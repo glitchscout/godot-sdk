@@ -1,0 +1,17 @@
+; Development and test project for the Glitchscout Godot SDK. The shipped addon is addons/glitchscout/.
+
+config_version=5
+
+[application]
+
+config/name="Glitchscout SDK"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+
+[autoload]
+
+Glitchscout="*res://addons/glitchscout/glitchscout.gd"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
