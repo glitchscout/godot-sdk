@@ -14,6 +14,8 @@ var inventory := {}
 var clock := 8.0 ## time of day, hours
 var god_mode := false
 
+var _level: Node
+
 
 func _ready() -> void:
 	var menu := MENU.instantiate()
@@ -27,6 +29,7 @@ func _ready() -> void:
 		gs.register_command("give_item", _give_item, "Adds items to the inventory", {"item": "string", "count": "int"})
 		gs.register_command("set_time", _set_time, "Sets the time of day in hours", {"time": "number"})
 		gs.register_command("load_save", _load_save, "Loads a save fixture by slot or path", {"slot": "string", "path": "string"})
+		gs.set_reset_handler(reset)
 
 
 func _exit_tree() -> void:
@@ -34,6 +37,7 @@ func _exit_tree() -> void:
 	if gs:
 		for name in COMMANDS:
 			gs.unregister_command(name)
+		gs.set_reset_handler(Callable())
 
 
 func player() -> Node3D:
@@ -45,8 +49,23 @@ func _start_new_game() -> void:
 	if state != "menu":
 		return
 	get_node("MainMenu").queue_free()
-	add_child(load(FIRST_LEVEL).instantiate())
+	_level = load(FIRST_LEVEL).instantiate()
+	add_child(_level)
 	state = "playing"
+	_apply_god_mode()
+
+
+## Reset tier 1: a fresh copy of the current level and cleared game state (what RELOAD_SCENE does here,
+## since this root node outlives its levels).
+func reset() -> void:
+	flags.clear()
+	inventory.clear()
+	clock = 8.0
+	if _level:
+		remove_child(_level)
+		_level.queue_free()
+		_level = load(FIRST_LEVEL).instantiate()
+		add_child(_level)
 	_apply_god_mode()
 
 
@@ -98,3 +117,4 @@ func _load_save(args: Dictionary) -> Variant:
 	if pos is Array and pos.size() == 3 and player():
 		player().global_position = Vector3(pos[0], pos[1], pos[2])
 	return {"loaded": path}
+

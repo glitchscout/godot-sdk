@@ -51,6 +51,10 @@ interact={
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/glitchscout/plugin.cfg")
+
 [gdunit4]
 
 ; GdUnit4 times tests in game time. Tests run at --fixed-fps 60 headless, far faster than real time, so its
