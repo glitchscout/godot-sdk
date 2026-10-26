@@ -46,7 +46,10 @@ func test_every_input_action_is_listed_with_its_type() -> void:
 	var actions := {}
 	for a in _manifest().input_actions:
 		actions[a.name] = a.type
-	assert_int(actions.size()).is_equal(InputMap.get_actions().size())
+	for a in InputMap.get_actions():
+		assert_bool(actions.has(String(a))).is_true()
+	# Every InputMap action, plus the virtual 2D axes from glitchscout/axes.
+	assert_int(actions.size()).is_equal(InputMap.get_actions().size() + GlitchscoutSDK.InputInjection.axes().size())
 	assert_str(actions.get("gs_test_jump", "")).is_equal("button")
 	assert_str(actions.get("gs_test_steer", "")).is_equal("axis_1d")
 	assert_str(actions.get("ui_accept", "")).is_equal("button")

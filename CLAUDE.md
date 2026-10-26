@@ -21,5 +21,8 @@ and the Godot fixture game. The repo root is a Godot project used for developmen
 - GDScript is statically typed. Public classes are prefixed `Glitchscout`; the addon must not add other global names.
 - Godot's WebSocketPeer loses a message that arrives in the same poll as a close frame: never send and close in
   one breath (flush, then close a little later), in the SDK or in test mocks.
+- Tests that drive a held SDK run their orchestrator on a thread (`ScriptedOrchestrator`). From there, read only
+  plain variables the game records (e.g. the fixture player's `last_position`), never node transforms: Godot
+  returns zeros for those off the main thread.
 - Commits and PR titles start with the ticket key: `GSC-n <imperative summary>`.
 - No AI attribution in commits, PRs or review comments.
