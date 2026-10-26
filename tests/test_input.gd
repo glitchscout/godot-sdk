@@ -11,11 +11,15 @@ class InputProbe:
 	var physics_pressed := 0 ## physics frames with jump held
 	var idle_pressed := 0 ## idle frames with jump held
 	var events: Array = [] ## jump InputEventActions seen by _input: true = pressed
+	var move_left_events := 0
+	var jump_edges := 0 ## physics frames where jump was just pressed
 	var strengths := {}
 
 	func _physics_process(_delta: float) -> void:
 		if Input.is_action_pressed("jump"):
 			physics_pressed += 1
+		if Input.is_action_just_pressed("jump"):
+			jump_edges += 1
 
 	func _process(_delta: float) -> void:
 		if Input.is_action_pressed("jump"):
@@ -26,6 +30,8 @@ class InputProbe:
 	func _input(event: InputEvent) -> void:
 		if event is InputEventAction and event.action == "jump":
 			events.append(event.pressed)
+		if event is InputEventAction and event.action == "move_left":
+			move_left_events += 1
 
 
 var orch: ScriptedOrchestrator
@@ -184,3 +190,26 @@ func test_fixture_player_walks_with_analog_input_and_jumps_on_a_held_button() ->
 	assert_bool(half > 0.5 and half < full).is_true() # analog: slower, but moving
 	assert_int(orch.vars.jump[0]).is_equal(1)
 	assert_bool(orch.vars.jump[1] > 2.0).is_true() # left the floor (centre starts at 1.0)
+
+
+func test_analog_input_never_releases_actions_it_did_not_press() -> void:
+	var steps: Array[Callable] = [orch.ack_hello(), orch.wait_ms(100)]
+	steps.append_array(_inject({"analog_axes": [{"action": "move", "x": 1.0, "y": 0.0}]}, "a"))
+	steps.append_array(_step(2, "s"))
+	steps.append_array(_inject({"analog_axes": [{"action": "move", "x": 0.5, "y": 0.0}]}, "b"))
+	steps.append_array(_step(2, "s2"))
+	steps.append(orch.goodbye())
+	assert_bool(await _run(steps)).is_true()
+	assert_int(probe.move_left_events).is_equal(0)
+
+
+func test_pressing_a_held_action_again_extends_it_without_a_new_press() -> void:
+	var steps: Array[Callable] = [orch.ack_hello(), orch.wait_ms(100), _snap("before")]
+	steps.append_array(_inject(_press("jump"), "first"))
+	steps.append_array(_step(2, "a"))
+	steps.append_array(_inject(_press("jump", 2), "again"))
+	steps.append_array(_step(4, "b"))
+	steps.append_array([_snap("after"), orch.goodbye()])
+	assert_bool(await _run(steps)).is_true()
+	assert_int(probe.jump_edges).is_equal(1)
+	assert_array([orch.vars.after[0] - orch.vars.before[0], orch.vars.after[1] - orch.vars.before[1]]).is_equal([4, 4])

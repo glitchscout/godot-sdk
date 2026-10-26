@@ -10,6 +10,9 @@ extends RefCounted
 
 const AXES_SETTING := "glitchscout/axes"
 
+static var _axes_cache: Variant = null ## parsed glitchscout/axes; refreshed when project settings change
+static var _warned := {} ## malformed axis names already warned about
+
 var sdk: Node
 
 var _queue: Array = [] ## [action, pressed, strength, hold_ticks], applied at the next game frame
@@ -21,8 +24,20 @@ func _init(owner: Node) -> void:
 	sdk = owner
 
 
-## Virtual axes from the project setting, keeping only well-formed entries.
+## Virtual axes from the project setting, keeping only well-formed entries (parsed once, warned once).
 static func axes() -> Dictionary:
+	if _axes_cache == null:
+		_axes_cache = _parse_axes()
+		if not ProjectSettings.settings_changed.is_connected(_forget_axes):
+			ProjectSettings.settings_changed.connect(_forget_axes)
+	return _axes_cache
+
+
+static func _forget_axes() -> void:
+	_axes_cache = null
+
+
+static func _parse_axes() -> Dictionary:
 	var out := {}
 	var setting: Variant = ProjectSettings.get_setting(AXES_SETTING, {})
 	if not setting is Dictionary:
@@ -31,7 +46,8 @@ static func axes() -> Dictionary:
 		var actions: Variant = setting[name]
 		if actions is Array and actions.size() == 4 and actions.all(func(a): return InputMap.has_action(str(a))):
 			out[str(name)] = actions.map(func(a): return str(a))
-		else:
+		elif not _warned.has(name):
+			_warned[name] = true
 			push_warning("Glitchscout: %s.%s needs four InputMap actions (negative x, positive x, negative y, positive y)" % [AXES_SETTING, name])
 	return out
 
@@ -99,6 +115,8 @@ func release_all() -> void:
 
 
 func _apply(action: String, pressed: bool, strength: float, hold_ticks: int) -> void:
+	if not pressed and not _held.has(action):
+		return # never send the game a release for something we didn't press
 	var ev := InputEventAction.new()
 	ev.action = action
 	ev.pressed = pressed
