@@ -503,9 +503,6 @@ func _on_text(text: String) -> void:
 	if not (msg.get("id") is String and _UUID.search(msg.id) != null):
 		send("ERROR", {"code": "invalid_message", "message": "a %s without a message id" % str(msg.message_type), "retryable": false})
 		return
-	if msg.get("protocol") != PROTOCOL:
-		reply_error(msg, "unsupported_protocol", "this SDK speaks %s, not %s" % [PROTOCOL, str(msg.get("protocol"))])
-		return
 	var payload: Dictionary = msg.payload if msg.get("payload") is Dictionary else {}
 	var message_type := str(msg.message_type)
 	if state == State.HELLO_SENT:
@@ -519,6 +516,10 @@ func _on_text(text: String) -> void:
 				_on_goodbye(msg)
 		return
 	if state != State.READY:
+		return
+	# Checked only once the session is open: a refusal may come in a newer protocol's envelope.
+	if msg.get("protocol") != PROTOCOL:
+		reply_error(msg, "unsupported_protocol", "this SDK speaks %s, not %s" % [PROTOCOL, str(msg.get("protocol"))])
 		return
 	match message_type:
 		"HEARTBEAT", "HELLO_ACK", "ACK":

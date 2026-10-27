@@ -40,6 +40,7 @@ func test_requests_that_break_their_schema_are_refused() -> void:
 		["QUERY", {"kind": "raycast", "params": "oops"}],
 		["ACTION_INJECT", {"digital_buttons": "nope"}],
 		["ACTION_INJECT", {"digital_buttons": ["nope"]}],
+		["ACTION_INJECT", {}],
 		["CAPTURE", {"encoding": "bmp"}],
 		["STEP", {"ticks": "ten"}],
 		["STEP", {"ticks": 1.5}],

@@ -28,6 +28,8 @@ const SHAPES := {
 	"QUERY": {"kind": [STRING, true], "params": [OBJECT, true]},
 	"CAPTURE": {"encoding": [STRING, true, ["png", "jpeg"]], "max_long_edge": [INT], "lossless": [BOOL]},
 }
+## Message types whose payload needs at least one field.
+const NOT_EMPTY := ["ACTION_INJECT"]
 
 
 ## Why payload doesn't fit the request shape of message_type, or "" when it does (or there's no shape).
@@ -37,6 +39,8 @@ static func problem(message_type: String, payload: Variant) -> String:
 	var shape: Dictionary = SHAPES.get(message_type, {})
 	if shape.is_empty():
 		return ""
+	if message_type in NOT_EMPTY and payload.is_empty():
+		return "the payload is empty"
 	for key in payload:
 		if not shape.has(key):
 			return "unknown field '%s'" % key

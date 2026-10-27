@@ -178,3 +178,15 @@ func test_in_step_mode_a_request_sent_with_the_hello_ack_is_answered_held() -> v
 	var beats := orch.messages("HEARTBEAT") # sent while held
 	assert_array(beats).is_not_empty()
 	assert_int(int(reply.call()[0].tick_frame)).is_equal(int(beats[0].tick_frame))
+
+
+## An orchestrator that speaks only a newer protocol may refuse in its own envelope: still a refusal.
+func test_a_refusal_in_another_protocols_envelope_still_rejects() -> void:
+	start_sdk()
+	var hello := await wait_message("HELLO")
+	var env := orch.envelope("ERROR", {"code": "version_mismatch", "message": "upgrade the SDK", "retryable": false}, hello.id)
+	env.protocol = "glitchscout/2"
+	orch.send_text(JSON.stringify(env))
+	await pump_until(func(): return sdk.state == GlitchscoutSDK.State.REJECTED)
+	assert_int(sdk.state).is_equal(GlitchscoutSDK.State.REJECTED)
+	assert_str(sdk.last_error.get("code", "")).is_equal("version_mismatch")
