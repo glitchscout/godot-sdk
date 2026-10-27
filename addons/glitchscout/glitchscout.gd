@@ -28,6 +28,7 @@ const UI := preload("ui.gd")
 const Queries := preload("queries.gd")
 const Commands := preload("commands.gd")
 const Events := preload("events.gd")
+const Requests := preload("requests.gd")
 const Capture := preload("capture.gd")
 const LogTail := preload("log_tail.gd")
 const PROTOCOL := "glitchscout/1"
@@ -207,6 +208,8 @@ func poll() -> void:
 		return
 	_peer.poll()
 	while _peer and _peer.get_available_packet_count() > 0:
+		if _step.engaging():
+			break # the rest waits for the hold that starts next frame (step_mode.gd engaging)
 		var packet := _peer.get_packet()
 		if _peer.was_string_packet():
 			_on_text(packet.get_string_from_utf8())
@@ -492,9 +495,16 @@ func _send_hello() -> void:
 
 
 func _on_text(text: String) -> void:
-	var msg: Variant = JSON.parse_string(text)
+	var json := JSON.new() # an instance, unlike JSON.parse_string, doesn't log the parse error as an engine ERROR
+	var msg: Variant = json.data if json.parse(text) == OK else null
 	if not (msg is Dictionary) or not msg.has("message_type"):
 		send("ERROR", {"code": "invalid_message", "message": "not a protocol message", "retryable": false})
+		return
+	if not (msg.get("id") is String and _UUID.search(msg.id) != null):
+		send("ERROR", {"code": "invalid_message", "message": "a %s without a message id" % str(msg.message_type), "retryable": false})
+		return
+	if msg.get("protocol") != PROTOCOL:
+		reply_error(msg, "unsupported_protocol", "this SDK speaks %s, not %s" % [PROTOCOL, str(msg.get("protocol"))])
 		return
 	var payload: Dictionary = msg.payload if msg.get("payload") is Dictionary else {}
 	var message_type := str(msg.message_type)
@@ -511,7 +521,7 @@ func _on_text(text: String) -> void:
 	if state != State.READY:
 		return
 	match message_type:
-		"HEARTBEAT", "HELLO_ACK":
+		"HEARTBEAT", "HELLO_ACK", "ACK":
 			pass
 		"GOODBYE":
 			_on_goodbye(msg)
@@ -520,7 +530,10 @@ func _on_text(text: String) -> void:
 			push_warning("Glitchscout: the orchestrator reported %s: %s" % [last_error.code, last_error.message])
 		_:
 			var handler: Callable = _handlers.get(message_type, Callable())
-			if handler.is_valid():
+			var why := Requests.problem(message_type, msg.get("payload"))
+			if handler.is_valid() and not why.is_empty():
+				reply_error(msg, "bad_request", "%s: %s" % [message_type, why])
+			elif handler.is_valid():
 				handler.call(msg)
 			else:
 				reply_error(msg, "unsupported", "%s is not supported by Glitchscout SDK %s" % [message_type, SDK_VERSION])
@@ -650,6 +663,9 @@ func _strings(v: Variant) -> Array:
 		for s in v:
 			out.append(str(s))
 	return out
+
+
+static var _UUID := RegEx.create_from_string("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 
 func _uuid() -> String:

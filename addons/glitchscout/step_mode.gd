@@ -74,6 +74,12 @@ func release() -> void:
 		_release()
 
 
+## Whether step mode is about to hold the game but hasn't yet: the session just became ready, and the hold
+## starts at the next frame. Requests wait for it, so their replies describe the held game.
+func engaging() -> bool:
+	return _should_wait() and not _engaged
+
+
 func _should_wait() -> bool:
 	return sdk.time_mode == "step" and sdk.state in [sdk.State.READY, sdk.State.RECONNECTING]
 
