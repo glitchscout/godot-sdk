@@ -1,0 +1,158 @@
+[gd_scene load_steps=17 format=3]
+
+[ext_resource type="PackedScene" path="res://fixture/player/player.tscn" id="player"]
+[ext_resource type="Script" path="res://fixture/course/interactable.gd" id="interactable"]
+[ext_resource type="Script" path="res://fixture/course/patroller.gd" id="patroller"]
+[ext_resource type="Script" path="res://fixture/course/platform.gd" id="platform"]
+[ext_resource type="Script" path="res://fixture/course/goal.gd" id="goal"]
+
+[sub_resource type="BoxShape3D" id="box_14_1_10"]
+size = Vector3(14, 1, 10)
+
+[sub_resource type="BoxShape3D" id="box_4_1_4"]
+size = Vector3(4, 1, 4)
+
+[sub_resource type="BoxShape3D" id="box_10_1_6"]
+size = Vector3(10, 1, 6)
+
+[sub_resource type="BoxShape3D" id="box_6_1_4"]
+size = Vector3(6, 1, 4)
+
+[sub_resource type="BoxShape3D" id="box_5_5_2_0_5"]
+size = Vector3(5.5, 2, 0.5)
+
+[sub_resource type="BoxShape3D" id="box_4_2_0_5"]
+size = Vector3(4, 2, 0.5)
+
+[sub_resource type="BoxShape3D" id="box_interactable"]
+size = Vector3(1, 2, 1)
+
+[sub_resource type="BoxShape3D" id="box_door"]
+size = Vector3(3, 2, 0.5)
+
+[sub_resource type="BoxShape3D" id="box_platform"]
+size = Vector3(3, 0.5, 3)
+
+[sub_resource type="BoxShape3D" id="box_patroller"]
+size = Vector3(0.8, 1.6, 0.8)
+
+[sub_resource type="BoxShape3D" id="box_goal"]
+size = Vector3(2, 2, 2)
+
+[node name="Course" type="Node3D"]
+
+[node name="FloorStart" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+
+[node name="Shape" type="CollisionShape3D" parent="FloorStart"]
+shape = SubResource("box_14_1_10")
+
+[node name="FloorCorridor" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, -8)
+
+[node name="Shape" type="CollisionShape3D" parent="FloorCorridor"]
+shape = SubResource("box_4_1_4")
+
+[node name="FloorPatrol" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, -15)
+
+[node name="Shape" type="CollisionShape3D" parent="FloorPatrol"]
+shape = SubResource("box_10_1_6")
+
+[node name="FloorGoal" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, -26)
+
+[node name="Shape" type="CollisionShape3D" parent="FloorGoal"]
+shape = SubResource("box_6_1_4")
+
+[node name="WallLeft" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.25, 1, -5.5)
+
+[node name="Shape" type="CollisionShape3D" parent="WallLeft"]
+shape = SubResource("box_5_5_2_0_5")
+
+[node name="WallRight" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.25, 1, -5.5)
+
+[node name="Shape" type="CollisionShape3D" parent="WallRight"]
+shape = SubResource("box_5_5_2_0_5")
+
+[node name="InvisibleWall" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 3)
+
+[node name="Shape" type="CollisionShape3D" parent="InvisibleWall"]
+shape = SubResource("box_4_2_0_5")
+
+[node name="Elder" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 1, 0)
+script = ExtResource("interactable")
+id = "elder"
+kind = "npc"
+state = "idle"
+
+[node name="Shape" type="CollisionShape3D" parent="Elder"]
+shape = SubResource("box_interactable")
+
+[node name="Keycard" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 1, 0)
+script = ExtResource("interactable")
+id = "keycard_red"
+kind = "pickup"
+state = "available"
+item = "keycard_red"
+
+[node name="Shape" type="CollisionShape3D" parent="Keycard"]
+shape = SubResource("box_interactable")
+
+[node name="DoorRed" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, -5.5)
+script = ExtResource("interactable")
+id = "door_red"
+kind = "door"
+state = "locked"
+item = "keycard_red"
+
+[node name="Shape" type="CollisionShape3D" parent="DoorRed"]
+shape = SubResource("box_door")
+
+[node name="BrokenLever" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 1, 0)
+script = ExtResource("interactable")
+id = "lever_bridge"
+kind = "lever"
+state = "off"
+
+[node name="Shape" type="CollisionShape3D" parent="BrokenLever"]
+shape = SubResource("box_interactable")
+
+[node name="MovingPlatform" type="AnimatableBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.25, -19.5)
+script = ExtResource("platform")
+offset = Vector3(0, 0, -3)
+period = 3.0
+
+[node name="Shape" type="CollisionShape3D" parent="MovingPlatform"]
+shape = SubResource("box_platform")
+
+[node name="Patroller" type="CharacterBody3D" parent="."]
+script = ExtResource("patroller")
+
+[node name="Shape" type="CollisionShape3D" parent="Patroller"]
+shape = SubResource("box_patroller")
+
+[node name="Goal" type="Area3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, -26)
+script = ExtResource("goal")
+
+[node name="Shape" type="CollisionShape3D" parent="Goal"]
+shape = SubResource("box_goal")
+
+[node name="Camera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.866, 0.5, 0, -0.5, 0.866, 0, 8, 10)
+current = true
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.707, 0.707, 0, -0.707, 0.707, 0, 10, 0)
+
+[node name="Player" parent="." instance=ExtResource("player")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
