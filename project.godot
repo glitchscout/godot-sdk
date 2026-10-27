@@ -18,6 +18,8 @@ Glitchscout="*res://addons/glitchscout/glitchscout.gd"
 axes={
 "move": ["move_left", "move_right", "move_forward", "move_back"]
 }
+; The fixture's own events (the course's interactables and goal send them).
+events=PackedStringArray("dialogue_started", "item_collected", "interaction_failed", "door_opened", "level_complete")
 
 [input]
 

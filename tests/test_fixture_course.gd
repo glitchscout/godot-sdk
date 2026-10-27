@@ -76,6 +76,14 @@ func test_load_scene_takes_level_names_and_the_player_reports_its_level() -> voi
 	assert_str(game.level_name()).is_equal("flat")
 
 
+## Nothing in the course shoves the player off its spawn point when the level loads.
+func test_the_player_stays_at_its_spawn() -> void:
+	await _course()
+	for i in 10:
+		await get_tree().physics_frame
+	var p: Vector3 = game.player().global_position
+	assert_float(Vector2(p.x, p.z).length()).override_failure_message("player at %s" % p).is_less(0.1)
+
 func test_talking_to_the_elder_starts_the_dialogue() -> void:
 	await _course()
 	await _press_at(Vector3(2, 1, 0))
@@ -196,6 +204,27 @@ func test_reset_disarms_every_fault() -> void:
 	game.hang_in = -1
 	game.drop_in = -1
 
+
+## The course has a navmesh, and the way on to the patrol floor crosses jump links over the gaps.
+func test_the_course_has_a_navmesh_with_links_over_its_gaps() -> void:
+	await _course()
+	var r := {}
+	for i in 60: # the navigation map needs a few frames to synchronise
+		r = await request("QUERY", {"kind": "nav_path", "params": {"from": {"x": 0, "y": 0, "z": 0}, "to": {"x": 0, "y": 0, "z": -15}}})
+		if r.get("message_type") == "QUERY_REPLY":
+			break
+		await get_tree().physics_frame
+	assert_str(r.get("message_type", "")).override_failure_message(str(r)).is_equal("QUERY_REPLY")
+	var result: Dictionary = r.get("payload", {}).get("result", {})
+	assert_bool(result.get("reachable", false)).override_failure_message(str(result)).is_true()
+	var kinds: Array = result.get("segments", []).map(func(s): return s.link_type)
+	assert_array(kinds).contains(["jump"])
+
+
+func test_the_fixture_declares_its_events() -> void:
+	await _start()
+	var events: Array = orch.messages("HELLO")[0].payload.manifest.get("events", [])
+	assert_array(events).contains(["dialogue_started", "item_collected", "interaction_failed", "door_opened", "level_complete"])
 
 class FakePeer:
 	extends RefCounted
