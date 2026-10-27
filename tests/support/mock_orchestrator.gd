@@ -57,13 +57,22 @@ func messages(message_type: String) -> Array:
 
 ## Sends a message on the newest connection and returns its id.
 func send(message_type: String, payload: Dictionary, reply_to: Variant = null) -> String:
-	var id := _uuid()
-	var env := {
-		"protocol": "glitchscout/1", "message_type": message_type, "id": id, "reply_to": reply_to,
+	var env := envelope(message_type, payload, reply_to)
+	_peers.back().send_text(JSON.stringify(env))
+	return env.id
+
+
+## A message envelope with a fresh id, for tests that bend it before sending it with send_text.
+func envelope(message_type: String, payload: Variant, reply_to: Variant = null) -> Dictionary:
+	return {
+		"protocol": "glitchscout/1", "message_type": message_type, "id": _uuid(), "reply_to": reply_to,
 		"session": null, "tick_frame": null, "ts": Time.get_unix_time_from_system(), "payload": payload,
 	}
-	_peers.back().send_text(JSON.stringify(env))
-	return id
+
+
+## Sends text as is on the newest connection.
+func send_text(text: String) -> void:
+	_peers.back().send_text(text)
 
 
 ## Closes the newest connection without a GOODBYE, as a dropped socket would. Godot's WebSocketPeer

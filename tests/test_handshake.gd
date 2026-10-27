@@ -157,3 +157,36 @@ func test_says_goodbye_when_the_game_exits() -> void:
 	var bye := await wait_message("GOODBYE")
 	assert_dict(bye).is_not_empty()
 	assert_str(bye.payload.reason).is_equal("game_exit")
+
+
+## Step mode holds the game from the frame after HELLO_ACK. A request that arrives together with the
+## HELLO_ACK must wait for that hold, or its reply describes a tick the game has already left behind.
+func test_in_step_mode_a_request_sent_with_the_hello_ack_is_answered_held() -> void:
+	sdk = GlitchscoutSDK.new()
+	sdk.quit_on_goodbye = false
+	sdk.time_mode = "step"
+	sdk.max_hold_ms = 600 # this main-thread mock can't send STEPs: let the hold time out into realtime
+	sdk.heartbeat_interval_ms = 100
+	sdk.configure(orch.endpoint(), "tok")
+	add_child(sdk)
+	var hello := await wait_message("HELLO")
+	orch.send("HELLO_ACK", {"protocol": "glitchscout/1", "session": "s-1", "resumed": false}, hello.id)
+	var id := orch.send("OBSERVE", {})
+	var reply := func() -> Array: return orch.received.filter(func(m): return m is Dictionary and m.get("reply_to") == id)
+	await pump_until(func(): return not reply.call().is_empty(), 5000)
+	assert_array(reply.call()).has_size(1)
+	var beats := orch.messages("HEARTBEAT") # sent while held
+	assert_array(beats).is_not_empty()
+	assert_int(int(reply.call()[0].tick_frame)).is_equal(int(beats[0].tick_frame))
+
+
+## An orchestrator that speaks only a newer protocol may refuse in its own envelope: still a refusal.
+func test_a_refusal_in_another_protocols_envelope_still_rejects() -> void:
+	start_sdk()
+	var hello := await wait_message("HELLO")
+	var env := orch.envelope("ERROR", {"code": "version_mismatch", "message": "upgrade the SDK", "retryable": false}, hello.id)
+	env.protocol = "glitchscout/2"
+	orch.send_text(JSON.stringify(env))
+	await pump_until(func(): return sdk.state == GlitchscoutSDK.State.REJECTED)
+	assert_int(sdk.state).is_equal(GlitchscoutSDK.State.REJECTED)
+	assert_str(sdk.last_error.get("code", "")).is_equal("version_mismatch")
