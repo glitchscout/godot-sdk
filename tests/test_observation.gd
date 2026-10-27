@@ -68,6 +68,20 @@ func test_player_position_velocity_flags_and_health() -> void:
 	assert_array(obs.keys()).contains_exactly(["player"])
 
 
+
+## A player inside a sub-scene of a level (a spawn scene, say) is in the level, not the sub-scene.
+func test_a_player_in_a_sub_scene_reports_the_outermost_scene() -> void:
+	var player: CharacterBody3D = level.get_node("Player")
+	var spawn := Node3D.new()
+	spawn.scene_file_path = "res://fixture/levels/spawn.tscn"
+	level.add_child(spawn)
+	spawn.owner = level
+	level.remove_child(player)
+	spawn.add_child(player)
+	player.owner = spawn
+	var obs := await _observe({"sections": ["player"]})
+	assert_str(obs.player.scene).is_equal("res://fixture/levels/flat.tscn")
+
 func test_interactables_sorted_by_sdk_distance_with_their_fields() -> void:
 	_thing("glitchscout_interactable", "door_far", Vector3(0, 1, 9), {"type": "door", "state": "closed", "requires": ["keycard_red"]})
 	_thing("glitchscout_interactable", "lever_near", Vector3(3, 1, 0), {"type": "lever", "state": "off", "enabled": true, "required_action": "interact", "interaction_range": 2.0, "ignored_key": 1})

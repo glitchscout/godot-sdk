@@ -214,11 +214,18 @@ func _player(node: Node, info: Dictionary) -> Dictionary:
 	return p
 
 
-## The scene file the player is in: the scene that owns the player node (so a level loaded under a
-## persistent root reports itself), else the current scene.
+## The scene file the player is in: the outermost scene that owns the player node (so a level loaded under
+## a persistent root reports itself, and a player inside a sub-scene of a level reports the level), else
+## the current scene.
 func _scene_of(node: Node) -> String:
-	if node.owner and not node.owner.scene_file_path.is_empty():
-		return node.owner.scene_file_path
+	var path := ""
+	var o := node.owner
+	while o:
+		if not o.scene_file_path.is_empty():
+			path = o.scene_file_path
+		o = o.owner
+	if not path.is_empty():
+		return path
 	var current := sdk.get_tree().current_scene
 	if current and current.is_ancestor_of(node) and not current.scene_file_path.is_empty():
 		return current.scene_file_path

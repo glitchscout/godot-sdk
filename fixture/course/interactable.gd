@@ -36,7 +36,7 @@ func interact(_player: Node) -> void:
 			_event("dialogue_started", {"npc_id": id})
 		"pickup":
 			if game:
-				game.inventory[item] = 1
+				game.inventory[item] = int(game.inventory.get(item, 0)) + 1
 			_event("item_collected", {"item": item})
 			queue_free()
 		"door":
@@ -66,7 +66,7 @@ func _pull_mechanism() -> void:
 	mechanism.connect_bridge_gears() # was never written: a real GDScript error, on purpose
 
 
-func _event(name: String, data: Dictionary) -> void:
+func _event(event_name: String, data: Dictionary) -> void:
 	var gs := get_node_or_null("/root/Glitchscout")
 	if gs:
-		gs.event(name, data)
+		gs.event(event_name, data)

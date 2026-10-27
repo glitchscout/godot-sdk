@@ -1,8 +1,8 @@
 extends Node
 ## The fixture game's root: it opens on the main menu, and "new game" swaps the menu for the first level.
 ## It registers the standard Glitchscout debug commands for itself (set_flag, god_mode, give_item,
-## set_time, load_save; teleport is the SDK's built-in), load_scene by level name, and fault commands the
-## orchestrator's tests use to produce every result category (§10.3):
+## set_time, load_save; teleport is the SDK's built-in), load_scene by level name, and fault commands that
+## produce every result category a Glitchscout run can end in:
 ##
 ##   crash_now {after_frames}, hang {after_frames}  the process crashes, or stops answering
 ##   log_error                                      a real GDScript error on the next frame
@@ -45,9 +45,7 @@ var socket_override: Variant = null
 
 func _ready() -> void:
 	add_to_group("fixture_game")
-	var menu := MENU.instantiate()
-	menu.new_game.connect(_start_new_game)
-	add_child(menu)
+	_show_menu()
 	# Through the node, not the class, so a release build without the addon still runs.
 	var gs := get_node_or_null("/root/Glitchscout")
 	if gs:
@@ -81,6 +79,13 @@ func player() -> Node3D:
 	return players[0] if not players.is_empty() and is_ancestor_of(players[0]) else null
 
 
+func _show_menu() -> void:
+	var menu := MENU.instantiate()
+	menu.new_game.connect(_start_new_game)
+	add_child(menu)
+	state = "menu"
+
+
 func _start_new_game() -> void:
 	if state != "menu":
 		return
@@ -90,9 +95,9 @@ func _start_new_game() -> void:
 func level_name() -> String:
 	if state == "menu":
 		return "menu"
-	for name in LEVELS:
-		if LEVELS[name] == _level_path:
-			return name
+	for level in LEVELS:
+		if LEVELS[level] == _level_path:
+			return level
 	return _level_path
 
 
@@ -112,15 +117,15 @@ func _enter_level(path: String) -> void:
 	_apply_god_mode()
 
 
-## Reset tier 1: a fresh copy of the current level and cleared game state (what RELOAD_SCENE does here,
-## since this root node outlives its levels).
+## Reset tier 1: a fresh copy of the current level, cleared game state and no faults armed (what
+## RELOAD_SCENE does here, since this root node outlives its levels).
 func reset() -> void:
 	flags.clear()
 	inventory.clear()
 	clock = 8.0
+	_disarm_faults()
 	if _level:
 		_enter_level(_level_path)
-	_apply_god_mode()
 
 
 func _set_flag(args: Dictionary) -> Variant:
@@ -174,25 +179,33 @@ func _load_save(args: Dictionary) -> Variant:
 
 
 func _load_scene(args: Dictionary) -> Variant:
-	var name := str(args.get("scene", ""))
-	if name == "menu":
+	var level := str(args.get("scene", ""))
+	if level == "menu":
 		if state != "menu":
 			if _level:
 				remove_child(_level)
 				_level.queue_free()
 				_level = null
-			var menu := MENU.instantiate()
-			menu.new_game.connect(_start_new_game)
-			add_child(menu)
-			state = "menu"
+			_show_menu()
 		return null
-	if not LEVELS.has(name):
-		return "no level %s (menu, %s)" % [name, ", ".join(LEVELS.keys())]
-	_enter_level(LEVELS[name])
+	if not LEVELS.has(level):
+		return "no level %s (menu, %s)" % [level, ", ".join(LEVELS.keys())]
+	_enter_level(LEVELS[level])
 	return null
 
 
 # --- faults ----------------------------------------------------------------------------------------------
+
+func _disarm_faults() -> void:
+	crash_in = -1
+	hang_in = -1
+	drop_in = -1
+	slow_ms = 0
+	jam_next_door = false
+	_leak_per_second = 0
+	_leaked.clear()
+	leaked_bytes = 0
+
 
 func _frames(args: Dictionary) -> int:
 	return maxi(1, int(args.get("after_frames", 0))) # at least one frame, so the ACK goes out first

@@ -170,6 +170,33 @@ func test_crash_and_hang_arm_for_later_frames() -> void:
 	game.hang_in = -1
 
 
+func test_a_pickup_adds_to_what_the_player_already_has() -> void:
+	await _course()
+	await _cmd("give_item", {"item": "keycard_red", "count": 2})
+	await _press_at(Vector3(-2, 1, 0))
+	assert_int(int(game.inventory.get("keycard_red", 0))).is_equal(3)
+
+
+func test_reset_disarms_every_fault() -> void:
+	await _course()
+	for c in [["crash_now", {"after_frames": 100000}], ["hang", {"after_frames": 100000}],
+			["drop_connection", {"after_frames": 100000}], ["slow_frames", {"ms": 5}],
+			["leak_memory", {"mb_per_second": 1}], ["softlock_door", {}]]:
+		await _cmd(c[0], c[1])
+	await get_tree().physics_frame
+	game.reset()
+	assert_array([game.crash_in, game.hang_in, game.drop_in]).contains_exactly([-1, -1, -1])
+	assert_int(game.slow_ms).is_equal(0)
+	assert_bool(game.jam_next_door).is_false()
+	assert_int(game.leaked_bytes).is_equal(0)
+	var before: int = game.leaked_bytes
+	await get_tree().physics_frame
+	assert_int(game.leaked_bytes).is_equal(before)
+	game.crash_in = -1 # in case reset didn't
+	game.hang_in = -1
+	game.drop_in = -1
+
+
 class FakePeer:
 	extends RefCounted
 
