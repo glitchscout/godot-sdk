@@ -120,10 +120,11 @@ func test_fixture_reset_starts_the_level_afresh() -> void:
 
 
 func test_manifest_lists_events_and_reset_tiers() -> void:
+	var declared: Variant = ProjectSettings.get_setting("glitchscout/events", null) # the project's own, put back after
 	ProjectSettings.set_setting("glitchscout/events", ["dialogue_started", "player_died"])
 	start_sdk()
 	var hello := await wait_message("HELLO")
-	ProjectSettings.set_setting("glitchscout/events", null)
+	ProjectSettings.set_setting("glitchscout/events", declared)
 	var m: Dictionary = hello.payload.manifest
 	assert_array(m.events).contains(["dialogue_started", "player_died", "scene_changed"])
 	assert_array(m.supports.reset_tiers.map(func(t): return int(t))).contains_exactly([1]) # JSON numbers parse as floats
