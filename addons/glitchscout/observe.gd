@@ -4,22 +4,34 @@ extends RefCounted
 ## What the game exposes (plan §5.1):
 ## - the player: the first node in group "player";
 ## - interactables: group "glitchscout_interactable";
+##   an interactable also in "glitchscout_collectible" or "glitchscout_pushable" has affordance collect or push;
 ## - threats: group "glitchscout_threat";
+## - hazards: group "glitchscout_hazard" (glitchscout_observe() must give a radius; damage is optional);
 ## - other observable entities: group "glitchscout_observable".
 ## Each node may define glitchscout_observe() -> Dictionary with its fields ("id" overrides the node path).
 ## The SDK computes distances from the player, sorts by distance, filters by radius, type and max_n, and
 ## truncates by distance to fit the text-frame cap (default 256 KB), flagging truncated: true.
+##
+## After an interaction (an injected press of an action some interactable requires, "interact" or ui_accept),
+## interactables and entities whose state, enabled or collision then changes stay in view at any distance
+## for glitchscout/interaction_delta_ticks ticks (default 120), so what a lever opened far away is seen.
 
 const DEFAULT_RADIUS := 500.0
 const DEFAULT_MAX_N := 10000
+const DEFAULT_INTERACTION_TICKS := 120
 const GROUPS := {
 	"interactables": "glitchscout_interactable",
 	"threats": "glitchscout_threat",
+	"hazards": "glitchscout_hazard",
 	"entities": "glitchscout_observable",
 }
+const AFFORDANCE_GROUPS := {"glitchscout_collectible": "collect", "glitchscout_pushable": "push"}
+const AFFORDANCES := ["interact", "collect", "push"]
 const INTERACTABLE_KEYS := ["type", "state", "enabled", "required_action", "interaction_range", "requires"]
 const THREAT_KEYS := ["type", "health", "attack_range", "state"]
-const SECTIONS := ["player", "interactables", "camera", "threats", "ui_elements", "entities"]
+const SECTIONS := ["player", "interactables", "camera", "threats", "hazards", "ui_elements", "entities"]
+const WATCHED := ["state", "enabled", "collision"] ## facts an interaction can change
+const WATCHED_SECTIONS := ["interactables", "entities"]
 
 var sdk: Node
 
@@ -28,7 +40,15 @@ var _stream_filter := {}
 var _stream_due := 0
 var _streamed := false
 var _last_states := {} ## interactable id -> state at the last STATE_UPDATE
+var _last_hazards := {} ## hazard ids at the last STATE_UPDATE
 var _warned_too_large := false
+var _warned_hazard := false
+var _window_until := -1 ## last tick of the post-interaction window
+var _window_facts := {} ## section -> {id -> watched facts} when the window opened
+var _effects := {} ## ids of the entities the last observe() found changed in the window
+var _last_effects := {} ## those ids at the last STATE_UPDATE
+var _actions := {} ## the actions interactables require, as of _actions_tick
+var _actions_tick := -1
 
 
 func _init(owner: Node) -> void:
@@ -66,6 +86,49 @@ func frame_start() -> void:
 	_stream_due = sdk.tick + maxi(1, roundi(Engine.physics_ticks_per_second / _stream_hz))
 
 
+## Called for every press the SDK injects: one that interacts opens (or extends) the post-interaction window.
+func note_press(action: String) -> void:
+	if not _interacts(action):
+		return
+	if sdk.tick > _window_until:
+		_window_facts = {}
+		for section in WATCHED_SECTIONS:
+			_window_facts[section] = {}
+			for node in sdk.get_tree().get_nodes_in_group(GROUPS[section]):
+				var info := _info(node)
+				_window_facts[section][_id(node, info)] = _facts(info)
+	var ticks := int(ProjectSettings.get_setting("glitchscout/interaction_delta_ticks", DEFAULT_INTERACTION_TICKS))
+	_window_until = sdk.tick + maxi(0, ticks)
+
+
+func _interacts(action: String) -> bool:
+	if action in ["interact", "ui_accept"]:
+		return true
+	if _actions_tick != sdk.tick: # once per tick: movement presses arrive on most ticks
+		_actions_tick = sdk.tick
+		_actions = {}
+		for node in sdk.get_tree().get_nodes_in_group(GROUPS.interactables):
+			_actions[str(_info(node).get("required_action", ""))] = true
+	return _actions.has(action)
+
+
+static func _facts(info: Dictionary) -> Dictionary:
+	var out := {}
+	for k in WATCHED:
+		if info.has(k):
+			out[k] = str(info[k])
+	return out
+
+
+## Whether a node changed a watched fact since the window opened (false outside the window).
+func _changed_in_window(section: String, node: Node) -> bool:
+	if sdk.tick > _window_until:
+		return false
+	var info := _info(node)
+	var before: Variant = _window_facts.get(section, {}).get(_id(node, info))
+	return before != null and before != _facts(info)
+
+
 ## Entity types present in the scene now, for the manifest.
 func entity_types() -> Array[String]:
 	var seen: Array[String] = []
@@ -83,17 +146,20 @@ func _fit(message_type: String, filter: Dictionary, reply_to: Variant, mode: Str
 	var cap := int(filter.get("max_bytes", sdk.MAX_TEXT_FRAME_BYTES))
 	var present := observe(filter)
 	var obs := present.duplicate()
-	var saved := _last_states.duplicate()
+	var saved := [_last_states.duplicate(), _last_hazards.duplicate(), _last_effects.duplicate()]
 	var build := func() -> String:
 		if mode.is_empty():
 			return sdk.encode(message_type, obs, reply_to)
-		_last_states = saved.duplicate() # each attempt diffs against the last update, not the last attempt
+		# each attempt diffs against the last update, not the last attempt
+		_last_states = saved[0].duplicate()
+		_last_hazards = saved[1].duplicate()
+		_last_effects = saved[2].duplicate()
 		return sdk.encode(message_type, _state_payload(obs, present, mode), reply_to)
 	var text: String = build.call()
 	while text.to_utf8_buffer().size() > cap:
 		obs.truncated = true
 		var cut := false
-		for section in ["entities", "interactables", "threats", "ui_elements"]: # UI last: it's not by distance
+		for section in ["entities", "interactables", "hazards", "threats", "ui_elements"]: # UI last: it's not by distance
 			var arr: Array = obs.get(section, [])
 			if not arr.is_empty():
 				obs[section] = arr.slice(0, arr.size() * 9 / 10)
@@ -105,14 +171,18 @@ func _fit(message_type: String, filter: Dictionary, reply_to: Variant, mode: Str
 	return text
 
 
-## A STATE_UPDATE: full sends everything; delta sends the player, camera and threats (they move), the
-## interactables that are new or changed state, and the ids removed since the last update.
+## A STATE_UPDATE: full sends everything; delta sends the player, camera, threats and hazards (they move),
+## the interactables that are new or changed state, the entities an interaction changed, and the ids
+## removed since the last update.
 func _state_payload(obs: Dictionary, present: Dictionary, mode: String) -> Dictionary:
 	var current := {}
 	for it in present.get("interactables", []):
 		current[it.id] = it.get("state", "")
+	var hazards := {}
+	for h in present.get("hazards", []):
+		hazards[h.id] = true
 	var p := {"mode": mode}
-	for k in ["player", "camera", "threats", "ui_elements", "truncated"]:
+	for k in ["player", "camera", "threats", "hazards", "ui_elements", "truncated"]:
 		if obs.has(k):
 			p[k] = obs[k]
 	if mode == "full":
@@ -120,15 +190,34 @@ func _state_payload(obs: Dictionary, present: Dictionary, mode: String) -> Dicti
 			if obs.has(k):
 				p[k] = obs[k]
 	else:
-		var removed: Array = _last_states.keys().filter(func(id): return not current.has(id))
-		removed.sort()
+		var removed := {}
+		var gone: Array = _last_states.keys().filter(func(id): return not current.has(id))
+		if not gone.is_empty():
+			gone.sort()
+			removed.interactables = gone
+		var gone_hazards: Array = _last_hazards.keys().filter(func(id): return not hazards.has(id))
+		if not gone_hazards.is_empty():
+			gone_hazards.sort()
+			removed.hazards = gone_hazards
+		var in_view := {}
+		for e in present.get("entities", []):
+			in_view[e.id] = true
+		var gone_effects: Array = _last_effects.keys().filter(func(id): return not in_view.has(id))
+		if not gone_effects.is_empty():
+			gone_effects.sort()
+			removed.entities = gone_effects
 		if not removed.is_empty():
-			p.removed = {"interactables": removed}
+			p.removed = removed
 		var changed: Array = obs.get("interactables", []).filter(
 			func(it): return not _last_states.has(it.id) or _last_states[it.id] != current[it.id])
 		if not changed.is_empty():
 			p.interactables = changed
+		var effects: Array = obs.get("entities", []).filter(func(e): return _effects.has(e.id))
+		if not effects.is_empty():
+			p.entities = effects
 	_last_states = current
+	_last_hazards = hazards
+	_last_effects = _effects.duplicate()
 	return p
 
 
@@ -149,18 +238,38 @@ func observe(filter: Dictionary) -> Dictionary:
 			obs.camera = cam
 	if "ui_elements" in sections:
 		obs.ui_elements = sdk.ui_elements()
+	_effects = {}
 	for section in GROUPS:
 		if not section in sections:
 			continue
 		var items := []
+		var effects := [] # changed by an interaction: in view at any distance
 		for node in sdk.get_tree().get_nodes_in_group(GROUPS[section]):
 			if node == player:
 				continue
 			var item := _item(section, node, origin)
-			if item.distance <= radius and (types.is_empty() or item.get("type", "") in types):
+			if item.is_empty() or not (types.is_empty() or item.get("type", "") in types):
+				continue
+			var changed: bool = section in WATCHED_SECTIONS and _changed_in_window(section, node)
+			if changed and section == "entities":
+				_effects[item.id] = true
+			if item.distance <= radius:
 				items.append(item)
+			if changed:
+				effects.append(item)
 		items.sort_custom(func(a, b): return a.distance < b.distance)
-		obs[section] = items.slice(0, max_n)
+		items = items.slice(0, max_n)
+		var kept := {}
+		for item in items:
+			kept[item.id] = true
+		effects = effects.filter(func(e): return not kept.has(e.id)) # the ones the radius or max_n cut
+		if not effects.is_empty():
+			effects.sort_custom(func(a, b): return a.distance < b.distance)
+			items.append_array(effects)
+		if section == "hazards": # sorted by it, but the protocol's hazard has no distance
+			for item in items:
+				item.erase("distance")
+		obs[section] = items
 	return obs
 
 
@@ -248,6 +357,26 @@ func _item(section: String, node: Node, origin: Vector3) -> Dictionary:
 			_put_num(item, "interaction_range", info.get("interaction_range"), true)
 			if info.get("requires") is Array:
 				item.requires = info.requires.map(func(r): return str(r)).filter(func(r): return not r.is_empty())
+			var affordance := str(info.get("affordance", ""))
+			if affordance.is_empty():
+				for group in AFFORDANCE_GROUPS:
+					if node.is_in_group(group):
+						affordance = AFFORDANCE_GROUPS[group]
+			if affordance in AFFORDANCES and affordance != "interact": # interact is the default
+				item.affordance = affordance
+		"hazards":
+			var radius: Variant = _num(info.get("radius"))
+			if radius == null or radius < 0.0:
+				if not _warned_hazard:
+					_warned_hazard = true
+					push_warning("Glitchscout: hazard %s has no radius in glitchscout_observe(); it is left out" % item.id)
+				return {}
+			item.radius = radius
+			_put_text(item, "type", info.get("type"))
+			_put_num(item, "damage", info.get("damage"), true)
+			var v := _velocity(node, info)
+			if v != Vector3.ZERO:
+				item.velocity = _vec(v)
 		"threats":
 			_put_text(item, "type", info.get("type"))
 			_put_num(item, "health", info.get("health"), false)
