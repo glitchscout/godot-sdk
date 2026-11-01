@@ -46,6 +46,9 @@ var _warned_hazard := false
 var _window_until := -1 ## last tick of the post-interaction window
 var _window_facts := {} ## section -> {id -> watched facts} when the window opened
 var _effects := {} ## ids of the entities the last observe() found changed in the window
+var _last_effects := {} ## those ids at the last STATE_UPDATE
+var _actions := {} ## the actions interactables require, as of _actions_tick
+var _actions_tick := -1
 
 
 func _init(owner: Node) -> void:
@@ -101,10 +104,12 @@ func note_press(action: String) -> void:
 func _interacts(action: String) -> bool:
 	if action in ["interact", "ui_accept"]:
 		return true
-	for node in sdk.get_tree().get_nodes_in_group(GROUPS.interactables):
-		if str(_info(node).get("required_action", "")) == action:
-			return true
-	return false
+	if _actions_tick != sdk.tick: # once per tick: movement presses arrive on most ticks
+		_actions_tick = sdk.tick
+		_actions = {}
+		for node in sdk.get_tree().get_nodes_in_group(GROUPS.interactables):
+			_actions[str(_info(node).get("required_action", ""))] = true
+	return _actions.has(action)
 
 
 static func _facts(info: Dictionary) -> Dictionary:
@@ -141,11 +146,14 @@ func _fit(message_type: String, filter: Dictionary, reply_to: Variant, mode: Str
 	var cap := int(filter.get("max_bytes", sdk.MAX_TEXT_FRAME_BYTES))
 	var present := observe(filter)
 	var obs := present.duplicate()
-	var saved := _last_states.duplicate()
+	var saved := [_last_states.duplicate(), _last_hazards.duplicate(), _last_effects.duplicate()]
 	var build := func() -> String:
 		if mode.is_empty():
 			return sdk.encode(message_type, obs, reply_to)
-		_last_states = saved.duplicate() # each attempt diffs against the last update, not the last attempt
+		# each attempt diffs against the last update, not the last attempt
+		_last_states = saved[0].duplicate()
+		_last_hazards = saved[1].duplicate()
+		_last_effects = saved[2].duplicate()
 		return sdk.encode(message_type, _state_payload(obs, present, mode), reply_to)
 	var text: String = build.call()
 	while text.to_utf8_buffer().size() > cap:
@@ -191,6 +199,13 @@ func _state_payload(obs: Dictionary, present: Dictionary, mode: String) -> Dicti
 		if not gone_hazards.is_empty():
 			gone_hazards.sort()
 			removed.hazards = gone_hazards
+		var in_view := {}
+		for e in present.get("entities", []):
+			in_view[e.id] = true
+		var gone_effects: Array = _last_effects.keys().filter(func(id): return not in_view.has(id))
+		if not gone_effects.is_empty():
+			gone_effects.sort()
+			removed.entities = gone_effects
 		if not removed.is_empty():
 			p.removed = removed
 		var changed: Array = obs.get("interactables", []).filter(
@@ -202,6 +217,7 @@ func _state_payload(obs: Dictionary, present: Dictionary, mode: String) -> Dicti
 			p.entities = effects
 	_last_states = current
 	_last_hazards = hazards
+	_last_effects = _effects.duplicate()
 	return p
 
 
@@ -239,12 +255,11 @@ func observe(filter: Dictionary) -> Dictionary:
 				_effects[item.id] = true
 			if item.distance <= radius:
 				items.append(item)
-			elif changed:
+			if changed:
 				effects.append(item)
 		items.sort_custom(func(a, b): return a.distance < b.distance)
 		items = items.slice(0, max_n)
-		for item in items:
-			effects.erase(item)
+		effects = effects.filter(func(e): return not items.has(e)) # the ones the radius or max_n cut
 		if not effects.is_empty():
 			effects.sort_custom(func(a, b): return a.distance < b.distance)
 			items.append_array(effects)

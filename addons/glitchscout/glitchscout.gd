@@ -322,7 +322,7 @@ func entity_id(node: Node) -> String:
 	return _observation.entity_id(node)
 
 
-## Every observable entity (interactables, threats, observables) as {id, type, position}.
+## Every observable entity (interactables, threats, hazards, observables) as {id, type, position}.
 func all_entities() -> Array:
 	return _observation.all_entities()
 

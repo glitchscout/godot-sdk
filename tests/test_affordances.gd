@@ -205,3 +205,41 @@ func test_scene_groups_lists_the_groups_in_the_scene_with_counts() -> void:
 	assert_int(groups.get("coins", 0)).is_equal(2)
 	assert_int(groups.get("spikes", 0)).is_equal(1)
 	assert_bool(groups.has("_engine_private")).is_false()
+
+
+func test_a_changed_entity_inside_the_radius_survives_the_max_n_cut() -> void:
+	ProjectSettings.set_setting(WINDOW_SETTING, 30)
+	_thing(["glitchscout_interactable"], "lever", Vector3(1, 1, 0), {"type": "lever", "state": "off", "required_action": "interact"})
+	_thing(["glitchscout_interactable"], "crate_a", Vector3(2, 1, 0), {"type": "crate"})
+	var gate := _thing(["glitchscout_interactable"], "gate", Vector3(5, 1, 0), {"type": "gate", "state": "closed"})
+	start_sdk()
+	await handshake()
+	await _press_interact()
+	gate.info.state = "open"
+	var pulled := await request("OBSERVE", {"sections": ["interactables"], "max_n": 2})
+	assert_array(_ids(pulled.payload.interactables)).contains(["lever", "crate_a", "gate"])
+
+
+func test_entities_an_interaction_changed_are_removed_when_the_window_closes() -> void:
+	ProjectSettings.set_setting(WINDOW_SETTING, 20)
+	_thing(["glitchscout_interactable"], "lever", Vector3(2, 1, 0), {"type": "lever", "state": "off", "required_action": "interact"})
+	var light := _thing(["glitchscout_observable"], "light", Vector3(45, 1, 0), {"type": "light", "state": "off"})
+	start_sdk()
+	await handshake()
+	await request("OBSERVE", {"sections": ["entities"], "radius": 10, "stream_hz": 60})
+	assert_bool(await pump_until(func(): return orch.messages("STATE_UPDATE").size() >= 2)).is_true()
+	await _press_interact()
+	light.info.state = "on"
+	var pressed_at := sdk.tick
+	assert_bool(await pump_until(func(): return sdk.tick > pressed_at + 30)).is_true()
+	var removals := orch.messages("STATE_UPDATE").filter(func(u): return u.payload.get("removed", {}).has("entities"))
+	assert_array(removals).is_not_empty()
+	assert_array(removals[0].payload.removed.entities).contains_exactly(["light"])
+
+
+func test_a_ui_activation_that_does_nothing_is_not_an_interaction() -> void:
+	var s := auto_free(GlitchscoutSDK.new()) as GlitchscoutSDK
+	add_child(s)
+	var label := auto_free(Label.new()) as Label
+	assert_bool(s._ui._activate(label)).is_false()
+	assert_int(s._observation._window_until).is_equal(-1)
