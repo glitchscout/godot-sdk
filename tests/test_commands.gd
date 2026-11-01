@@ -185,3 +185,20 @@ func test_the_game_state_is_observed_for_persistence_checks() -> void:
 	assert_int(state.size()).is_equal(1)
 	assert_bool(state[0].properties.flags.tutorial_skipped).is_true()
 	assert_float(state[0].properties.inventory.coin).is_equal(3.0)
+
+
+func test_a_save_keeps_interactable_states_and_health() -> void:
+	_start_game()
+	await _ready_sdk()
+	await _cmd("load_scene", {"scene": "course"})
+	var door: Node = get_tree().get_nodes_in_group("glitchscout_interactable").filter(func(n): return n.kind == "door")[0]
+	door.state = "open"
+	game.player().health = 64.0
+	await _cmd("save_game", {"slot": "gs_test_states"})
+	game.reset()
+	var fresh: Node = get_tree().get_nodes_in_group("glitchscout_interactable").filter(func(n): return n.kind == "door" and is_instance_valid(n) and not n.is_queued_for_deletion())[0]
+	assert_str(fresh.state).is_not_equal("open")
+	await _cmd("load_save", {"slot": "gs_test_states"})
+	fresh = get_tree().get_nodes_in_group("glitchscout_interactable").filter(func(n): return n.kind == "door" and not n.is_queued_for_deletion())[0]
+	assert_str(fresh.state).is_equal("open")
+	assert_float(game.player().health).is_equal(64.0)

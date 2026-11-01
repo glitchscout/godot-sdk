@@ -175,6 +175,8 @@ func _set_time(args: Dictionary) -> Variant:
 	return null
 
 
+## Saves what the game keeps: flags, inventory, the level, each interactable's state and the player's
+## position and health.
 func _save_game(args: Dictionary) -> Variant:
 	var slot := str(args.get("slot", ""))
 	if slot.is_empty() or not slot.is_valid_filename():
@@ -183,10 +185,13 @@ func _save_game(args: Dictionary) -> Variant:
 	if not drop_flag_on_save.is_empty():
 		saved_flags.erase(drop_flag_on_save)
 		drop_flag_on_save = ""
-	var data := {"flags": saved_flags, "inventory": inventory.duplicate()}
+	var data := {"flags": saved_flags, "inventory": inventory.duplicate(), "level": level_name(), "interactables": {}}
+	for it in _interactables():
+		data.interactables[it.id] = it.state
 	if player():
 		var p := player().global_position
 		data.player_position = [p.x, p.y, p.z]
+		data.player_health = player().health
 	DirAccess.make_dir_recursive_absolute(USER_SLOT.get_base_dir())
 	var f := FileAccess.open(USER_SLOT % slot, FileAccess.WRITE)
 	if f == null:
@@ -204,12 +209,29 @@ func _load_save(args: Dictionary) -> Variant:
 	if not data is Dictionary:
 		return "%s is not a valid save" % path
 	_start_new_game()
+	var level := str(data.get("level", ""))
+	if LEVELS.has(level) and LEVELS[level] != _level_path:
+		_enter_level(LEVELS[level])
 	flags = data.get("flags", {}).duplicate()
 	inventory = data.get("inventory", {}).duplicate()
+	var states: Variant = data.get("interactables", {})
+	if states is Dictionary:
+		for it in _interactables():
+			if states.has(it.id):
+				it.state = str(states[it.id])
 	var pos: Variant = data.get("player_position")
 	if pos is Array and pos.size() == 3 and player():
 		player().global_position = Vector3(pos[0], pos[1], pos[2])
+	if data.has("player_health") and player():
+		player().health = float(data.player_health)
 	return {"loaded": path}
+
+
+## The current level's interactables (not those of a level on its way out).
+func _interactables() -> Array:
+	if not _level:
+		return []
+	return get_tree().get_nodes_in_group("glitchscout_interactable").filter(func(n): return _level.is_ancestor_of(n))
 
 
 func _load_scene(args: Dictionary) -> Variant:
