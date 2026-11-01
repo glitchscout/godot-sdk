@@ -259,7 +259,10 @@ func observe(filter: Dictionary) -> Dictionary:
 				effects.append(item)
 		items.sort_custom(func(a, b): return a.distance < b.distance)
 		items = items.slice(0, max_n)
-		effects = effects.filter(func(e): return not items.has(e)) # the ones the radius or max_n cut
+		var kept := {}
+		for item in items:
+			kept[item.id] = true
+		effects = effects.filter(func(e): return not kept.has(e.id)) # the ones the radius or max_n cut
 		if not effects.is_empty():
 			effects.sort_custom(func(a, b): return a.distance < b.distance)
 			items.append_array(effects)
