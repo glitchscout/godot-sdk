@@ -344,7 +344,9 @@ func _scene_of(node: Node) -> String:
 func _item(section: String, node: Node, origin: Vector3) -> Dictionary:
 	var info := _info(node)
 	var pos := _position(node)
-	var item := {"id": _id(node, info), "position": _vec(pos), "distance": snappedf(pos.distance_to(origin), 0.001)}
+	# A node with no position (a game manager, say) is everywhere: distance 0, so no radius cuts it.
+	var spatial := node is Node3D or node is Node2D
+	var item := {"id": _id(node, info), "position": _vec(pos), "distance": snappedf(pos.distance_to(origin), 0.001) if spatial else 0.0}
 	# Game values are coerced to the schema's types: a game's own enums, strings and NaNs must not make the
 	# message invalid (or not JSON at all).
 	match section:

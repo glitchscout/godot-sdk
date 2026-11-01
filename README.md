@@ -36,6 +36,8 @@ overrides the node path as its identifier. Glitchscout computes distances from t
 | `glitchscout_hazard` | spikes, lava, projectiles | `radius` (required), `type`, `damage`; velocity is read from a body or `velocity` |
 | `glitchscout_observable` | anything else worth watching | `type`, plus any other fields (sent as `properties`) |
 
+A node that isn't a `Node2D` or `Node3D` (a game manager, say) has no position, so no radius leaves it out.
+
 Nothing is marked by guessing: `gscout doctor` lists groups whose names look like pickups, crates or hazards,
 and you decide whether to add them.
 
@@ -62,11 +64,23 @@ func _give_item(args: Dictionary) -> Variant:
     return null                           # null or true: done; a Dictionary: done, sent back as the result
 ```
 
-The recommended standard set is `set_flag {name, value}`, `god_mode {enabled}`, `load_save {slot | path}`,
-`give_item {item, count}` and `set_time {time}`. Built in, and replaced by a registration of the same name:
+The recommended standard set is `set_flag {name, value}`, `god_mode {enabled}`, `save_game {slot}`,
+`load_save {slot | path}`, `give_item {item, count}` and `set_time {time}`. Built in, and replaced by a registration of the same name:
 `teleport {position}`, `load_scene {scene}`, `set_seed {seed}`, `time_scale {scale}` and `scene_groups` (read-only:
 the node groups in the scene with their sizes). Unregister commands when
 the node that handles them leaves the tree.
+
+With both `save_game` and `load_save` registered, Glitchscout checks saving on its own: it saves, reloads the
+scene, loads and compares what it observes before and after, and reports anything the save lost. Expose the
+state a save must keep (flags, inventory) on an observable node so the check can see it:
+
+```gdscript
+func _ready():
+    add_to_group("glitchscout_observable")
+
+func glitchscout_observe() -> Dictionary:
+    return {"id": "game_state", "flags": flags, "inventory": inventory}
+```
 
 ## Navigation
 
