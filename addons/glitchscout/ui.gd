@@ -170,6 +170,7 @@ func _can_accept(c: Control) -> bool:
 
 ## Activates a control without going through input. Returns false if it has no activation.
 func _activate(c: Control) -> bool:
+	sdk.note_press("ui_accept") # an interaction, like the ui_accept press it stands in for
 	if c is BaseButton:
 		if c.toggle_mode:
 			c.button_pressed = not c.button_pressed # emits toggled

@@ -128,6 +128,7 @@ func _apply(action: String, pressed: bool, strength: float, hold_ticks: int) -> 
 	ev.strength = strength if pressed else 0.0
 	Input.parse_input_event(ev)
 	if pressed:
+		sdk.note_press(action)
 		_held[action] = true
 		if hold_ticks > 0:
 			_release_at[action] = sdk.tick + hold_ticks

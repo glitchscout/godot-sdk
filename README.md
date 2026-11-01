@@ -30,16 +30,25 @@ overrides the node path as its identifier. Glitchscout computes distances from t
 | Group | Is | Fields from `glitchscout_observe()` |
 |---|---|---|
 | `player` | the player (first node in the group) | `health`, `state_flags`; position, velocity (`CharacterBody`/`RigidBody`) and `is_grounded` are read automatically |
-| `glitchscout_interactable` | doors, levers, pickups, NPCs | `type`, `state`, `enabled`, `required_action`, `interaction_range`, `requires` |
-| `glitchscout_threat` | enemies and hazards | `type`, `health`, `attack_range`, `state` |
+| `glitchscout_interactable` | doors, levers, pickups, NPCs | `type`, `state`, `enabled`, `required_action`, `interaction_range`, `requires`, `affordance` |
+| `glitchscout_collectible`, `glitchscout_pushable` | added to an interactable: a pickup to route through, an object to push | (sets `affordance` to `collect` or `push`) |
+| `glitchscout_threat` | enemies | `type`, `health`, `attack_range`, `state` |
+| `glitchscout_hazard` | spikes, lava, projectiles | `radius` (required), `type`, `damage`; velocity is read from a body or `velocity` |
 | `glitchscout_observable` | anything else worth watching | `type`, plus any other fields (sent as `properties`) |
+
+Nothing is marked by guessing: `gscout doctor` lists groups whose names look like pickups, crates or hazards,
+and you decide whether to add them.
+
+After an interaction (a press of an action an interactable requires, `interact` or `ui_accept`), interactables
+and observables whose `state`, `enabled` or `collision` then changes are reported at any distance for
+`glitchscout/interaction_delta_ticks` ticks (default 120), so a gate that a lever opens across the level is seen.
 
 The current camera is reported too: position, yaw and pitch, and `mode` from `glitchscout/camera_mode` (default
 `third_person`) or the camera's own `glitchscout_observe()`.
 
 ## Debug commands
 
-Glitchscout sets up tests with debug commands, and runs only the ones you register (plus four built-ins):
+Glitchscout sets up tests with debug commands, and runs only the ones you register (plus five built-ins):
 
 ```gdscript
 var gs := get_node_or_null("/root/Glitchscout")  # null in a build without the addon
@@ -55,7 +64,8 @@ func _give_item(args: Dictionary) -> Variant:
 
 The recommended standard set is `set_flag {name, value}`, `god_mode {enabled}`, `load_save {slot | path}`,
 `give_item {item, count}` and `set_time {time}`. Built in, and replaced by a registration of the same name:
-`teleport {position}`, `load_scene {scene}`, `set_seed {seed}` and `time_scale {scale}`. Unregister commands when
+`teleport {position}`, `load_scene {scene}`, `set_seed {seed}`, `time_scale {scale}` and `scene_groups` (read-only:
+the node groups in the scene with their sizes). Unregister commands when
 the node that handles them leaves the tree.
 
 ## Navigation

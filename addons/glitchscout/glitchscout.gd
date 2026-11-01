@@ -305,6 +305,11 @@ func press_for(action: String, ticks: int) -> void:
 	_injection.queue_press(action, ticks)
 
 
+## Told of every press the SDK applies, so an interaction keeps what it changed in view (observe.gd).
+func note_press(action: String) -> void:
+	_observation.note_press(action)
+
+
 ## Uses an AStarGrid2D for navigation queries in a game without navigation regions (null stops). Grid
 ## points are world positions (cell * cell_size + offset); paths go through cell centres.
 func use_nav_grid(grid: AStarGrid2D) -> void:

@@ -11,7 +11,8 @@ extends RefCounted
 ## back as result.value) or a String (refused with that message as invalid_args).
 ##
 ## Built-ins, which a game registration of the same name replaces: load_scene {scene}, set_seed {seed},
-## time_scale {scale} and teleport {position} (moves the player and stops it).
+## time_scale {scale}, teleport {position} (moves the player and stops it) and scene_groups (the node groups
+## in the tree with their sizes, read-only, so gscout doctor can suggest groups to mark).
 
 const Observation := preload("observe.gd")
 const BUILTINS := {
@@ -19,6 +20,7 @@ const BUILTINS := {
 	"set_seed": {"description": "Seeds the global random number generator", "params": {"seed": "int"}},
 	"time_scale": {"description": "Sets Engine.time_scale", "params": {"scale": "number"}},
 	"teleport": {"description": "Moves the player to a position", "params": {"position": "vec3"}},
+	"scene_groups": {"description": "Lists the node groups in the scene with their sizes"},
 }
 
 static var _registry := {} ## name -> {handler, description, params}
@@ -105,6 +107,21 @@ func _builtin_time_scale(args: Dictionary) -> Variant:
 		return "time_scale would break step mode's one physics tick per frame; it needs --glitchscout-time=realtime"
 	Engine.time_scale = float(scale)
 	return null
+
+
+func _builtin_scene_groups(_args: Dictionary) -> Variant:
+	var counts := {}
+	var pending: Array[Node] = [sdk.get_tree().root]
+	while not pending.is_empty():
+		var node: Node = pending.pop_back()
+		for g in node.get_groups():
+			var name := str(g)
+			if not name.begins_with("_"): # Godot's own
+				counts[name] = int(counts.get(name, 0)) + 1
+		pending.append_array(node.get_children())
+	var names := counts.keys()
+	names.sort()
+	return {"groups": names.map(func(n): return {"name": n, "count": counts[n]})}
 
 
 func _builtin_teleport(args: Dictionary) -> Variant:
