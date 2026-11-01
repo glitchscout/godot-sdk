@@ -1,8 +1,9 @@
 extends Node
 ## The fixture game's root: it opens on the main menu, and "new game" swaps the menu for the first level.
 ## It registers the standard Glitchscout debug commands for itself (set_flag, god_mode, give_item,
-## set_time, load_save; teleport is the SDK's built-in), load_scene by level name, and fault commands that
-## produce every result category a Glitchscout run can end in:
+## set_time, save_game, load_save; teleport is the SDK's built-in), load_scene by level name, and fault
+## commands that produce every result category a Glitchscout run can end in. Its flags and inventory are
+## observed as the game_state entity, so a save that loses them can be caught.
 ##
 ##   crash_now {after_frames}, hang {after_frames}  the process crashes, or stops answering
 ##   log_error                                      a real GDScript error on the next frame
@@ -11,14 +12,17 @@ extends Node
 ##   send_malformed                                 sends the orchestrator a message that breaks the protocol
 ##   slow_frames {ms}                               every frame takes at least ms (0 stops it)
 ##   softlock_door                                  the next door opened jams shut
+##   corrupt_save {flag}                            the next save_game leaves out that flag
 
 const MENU := preload("res://fixture/ui/main_menu.tscn")
 const FIRST_LEVEL := "res://fixture/levels/flat.tscn"
 const LEVELS := {"flat": FIRST_LEVEL, "course": "res://fixture/levels/course.tscn"}
 const SAVE_SLOT := "res://fixture/saves/%s.json"
+const USER_SLOT := "user://glitchscout_saves/%s.json" ## where save_game writes; load_save looks here first
 const COMMANDS := [
-	"set_flag", "god_mode", "give_item", "set_time", "load_save", "load_scene",
+	"set_flag", "god_mode", "give_item", "set_time", "save_game", "load_save", "load_scene",
 	"crash_now", "hang", "log_error", "leak_memory", "drop_connection", "send_malformed", "slow_frames", "softlock_door",
+	"corrupt_save",
 ]
 
 var state := "menu"
@@ -36,6 +40,7 @@ var hang_in := -1
 var drop_in := -1
 var slow_ms := 0
 var jam_next_door := false
+var drop_flag_on_save := "" ## corrupt_save: the flag the next save leaves out
 var leaked_bytes := 0
 var _leak_per_second := 0
 var _leaked: Array[PackedByteArray] = []
@@ -45,6 +50,7 @@ var socket_override: Variant = null
 
 func _ready() -> void:
 	add_to_group("fixture_game")
+	add_to_group("glitchscout_observable")
 	_show_menu()
 	# Through the node, not the class, so a release build without the addon still runs.
 	var gs := get_node_or_null("/root/Glitchscout")
@@ -53,7 +59,8 @@ func _ready() -> void:
 		gs.register_command("god_mode", _god_mode, "Makes the player invulnerable", {"enabled": "bool"})
 		gs.register_command("give_item", _give_item, "Adds items to the inventory", {"item": "string", "count": "int"})
 		gs.register_command("set_time", _set_time, "Sets the time of day in hours", {"time": "number"})
-		gs.register_command("load_save", _load_save, "Loads a save fixture by slot or path", {"slot": "string", "path": "string"})
+		gs.register_command("save_game", _save_game, "Saves the game to a slot", {"slot": "string"})
+		gs.register_command("load_save", _load_save, "Loads a save by slot or path", {"slot": "string", "path": "string"})
 		gs.register_command("load_scene", _load_scene, "Loads a level by name: menu, flat or course", {"scene": "string"})
 		gs.register_command("crash_now", _crash_now, "Fault: crash the process", {"after_frames": "int"})
 		gs.register_command("hang", _hang, "Fault: stop answering", {"after_frames": "int"})
@@ -63,6 +70,7 @@ func _ready() -> void:
 		gs.register_command("send_malformed", _send_malformed, "Fault: send a message that breaks the protocol")
 		gs.register_command("slow_frames", _slow_frames, "Fault: make every frame slow", {"ms": "int"})
 		gs.register_command("softlock_door", _softlock_door, "Fault: the next door opened jams shut")
+		gs.register_command("corrupt_save", _corrupt_save, "Fault: the next save leaves out a flag", {"flag": "string"})
 		gs.set_reset_handler(reset)
 
 
@@ -72,6 +80,11 @@ func _exit_tree() -> void:
 		for name in COMMANDS:
 			gs.unregister_command(name)
 		gs.set_reset_handler(Callable())
+
+
+## The game state Glitchscout sees: flags and inventory, as the game_state entity.
+func glitchscout_observe() -> Dictionary:
+	return {"id": "game_state", "type": "game_state", "flags": flags.duplicate(), "inventory": inventory.duplicate()}
 
 
 func player() -> Node3D:
@@ -162,8 +175,29 @@ func _set_time(args: Dictionary) -> Variant:
 	return null
 
 
+func _save_game(args: Dictionary) -> Variant:
+	var slot := str(args.get("slot", ""))
+	if slot.is_empty() or not slot.is_valid_filename():
+		return "save_game needs a slot (a plain file name)"
+	var saved_flags := flags.duplicate()
+	if not drop_flag_on_save.is_empty():
+		saved_flags.erase(drop_flag_on_save)
+		drop_flag_on_save = ""
+	var data := {"flags": saved_flags, "inventory": inventory.duplicate()}
+	if player():
+		var p := player().global_position
+		data.player_position = [p.x, p.y, p.z]
+	DirAccess.make_dir_recursive_absolute(USER_SLOT.get_base_dir())
+	var f := FileAccess.open(USER_SLOT % slot, FileAccess.WRITE)
+	if f == null:
+		return "can't write %s: %s" % [USER_SLOT % slot, error_string(FileAccess.get_open_error())]
+	f.store_string(JSON.stringify(data))
+	return {"saved": USER_SLOT % slot}
+
+
 func _load_save(args: Dictionary) -> Variant:
-	var path := str(args.get("path", SAVE_SLOT % str(args.get("slot", ""))))
+	var slot := str(args.get("slot", ""))
+	var path := str(args.get("path", USER_SLOT % slot if FileAccess.file_exists(USER_SLOT % slot) else SAVE_SLOT % slot))
 	if not FileAccess.file_exists(path):
 		return "no save at %s" % path
 	var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
@@ -202,6 +236,7 @@ func _disarm_faults() -> void:
 	drop_in = -1
 	slow_ms = 0
 	jam_next_door = false
+	drop_flag_on_save = ""
 	_leak_per_second = 0
 	_leaked.clear()
 	leaked_bytes = 0
@@ -263,6 +298,13 @@ func _slow_frames(args: Dictionary) -> Variant:
 
 func _softlock_door(_args: Dictionary) -> Variant:
 	jam_next_door = true
+	return null
+
+
+func _corrupt_save(args: Dictionary) -> Variant:
+	drop_flag_on_save = str(args.get("flag", ""))
+	if drop_flag_on_save.is_empty():
+		return "corrupt_save needs the flag to leave out"
 	return null
 
 

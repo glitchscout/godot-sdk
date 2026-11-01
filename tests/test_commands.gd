@@ -93,7 +93,7 @@ func test_manifest_lists_commands_and_the_capabilities_they_bring() -> void:
 	var hello := await wait_message("HELLO")
 	var m: Dictionary = hello.payload.manifest
 	var names: Array = m.commands.map(func(c): return c.name)
-	assert_array(names).contains(["teleport", "set_flag", "god_mode", "load_save", "give_item", "set_time", "load_scene", "set_seed", "time_scale"])
+	assert_array(names).contains(["teleport", "set_flag", "god_mode", "save_game", "load_save", "give_item", "set_time", "load_scene", "set_seed", "time_scale", "corrupt_save"])
 	var set_flag: Dictionary = m.commands.filter(func(c): return c.name == "set_flag")[0]
 	assert_str(set_flag.description).is_not_empty()
 	assert_bool(m.supports.god_mode).is_true()
@@ -136,3 +136,52 @@ func test_manifest_lists_each_command_once() -> void:
 	var hello := await wait_message("HELLO")
 	var names: Array = hello.payload.manifest.commands.map(func(c): return c.name)
 	assert_int(names.count("echo")).is_equal(1)
+
+
+func test_save_game_round_trips_through_load_save() -> void:
+	_start_game()
+	await _ready_sdk()
+	await _cmd("load_save", {"slot": "intro"})
+	await _cmd("set_flag", {"name": "door_open", "value": true})
+	await _cmd("give_item", {"item": "coin", "count": 2})
+	var saved := await _cmd("save_game", {"slot": "gs_test_roundtrip"})
+	assert_str(saved.message_type).is_equal("ACK")
+	var at: Vector3 = game.player().global_position
+	game.reset()
+	assert_bool(game.flags.has("door_open")).is_false()
+	var loaded := await _cmd("load_save", {"slot": "gs_test_roundtrip"})
+	assert_str(loaded.message_type).is_equal("ACK")
+	assert_bool(game.flags.door_open).is_true()
+	assert_int(int(game.inventory.coin)).is_equal(2)
+	assert_float(game.player().global_position.distance_to(at)).is_less(0.01)
+	assert_str((await _cmd("save_game", {})).payload.code).is_equal("invalid_args")
+
+
+func test_corrupt_save_drops_a_flag_from_the_next_save_only() -> void:
+	_start_game()
+	await _ready_sdk()
+	await _cmd("load_save", {"slot": "intro"})
+	await _cmd("set_flag", {"name": "door_open", "value": true})
+	await _cmd("set_flag", {"name": "lever_pulled", "value": true})
+	assert_str((await _cmd("corrupt_save", {"flag": "door_open"})).message_type).is_equal("ACK")
+	await _cmd("save_game", {"slot": "gs_test_corrupt"})
+	await _cmd("save_game", {"slot": "gs_test_clean"}) # the fault fires once
+	game.reset()
+	await _cmd("load_save", {"slot": "gs_test_corrupt"})
+	assert_bool(game.flags.has("door_open")).is_false()
+	assert_bool(game.flags.lever_pulled).is_true()
+	game.reset()
+	await _cmd("load_save", {"slot": "gs_test_clean"})
+	assert_bool(game.flags.door_open).is_true()
+
+
+func test_the_game_state_is_observed_for_persistence_checks() -> void:
+	_start_game()
+	await _ready_sdk()
+	await _cmd("load_save", {"slot": "intro"})
+	await _cmd("give_item", {"item": "coin", "count": 3})
+	var obs := await request("OBSERVE", {"sections": ["entities"]})
+	var state: Array = obs.payload.entities.filter(func(e): return e.id == "game_state")
+	assert_int(state.size()).is_equal(1)
+	assert_bool(state[0].properties.flags.tutorial_skipped).is_true()
+	assert_float(state[0].properties.inventory.coin).is_equal(3.0)
