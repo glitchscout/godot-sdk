@@ -202,3 +202,24 @@ func test_a_save_keeps_interactable_states_and_health() -> void:
 	fresh = get_tree().get_nodes_in_group("glitchscout_interactable").filter(func(n): return n.kind == "door" and not n.is_queued_for_deletion())[0]
 	assert_str(fresh.state).is_equal("open")
 	assert_float(game.player().health).is_equal(64.0)
+
+
+func test_save_game_never_overwrites_a_bundled_fixture() -> void:
+	_start_game()
+	await _ready_sdk()
+	var refused := await _cmd("save_game", {"slot": "intro"})
+	assert_str(refused.payload.code).is_equal("invalid_args")
+	assert_str(refused.payload.message).contains("intro")
+
+
+func test_a_bundled_fixture_wins_over_a_stray_save_of_the_same_name() -> void:
+	DirAccess.make_dir_recursive_absolute("user://glitchscout_saves")
+	var f := FileAccess.open("user://glitchscout_saves/intro.json", FileAccess.WRITE)
+	f.store_string(JSON.stringify({"flags": {"stale": true}}))
+	f = null
+	_start_game()
+	await _ready_sdk()
+	await _cmd("load_save", {"slot": "intro"})
+	DirAccess.remove_absolute("user://glitchscout_saves/intro.json")
+	assert_bool(game.flags.has("stale")).is_false()
+	assert_bool(game.flags.tutorial_skipped).is_true()

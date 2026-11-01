@@ -243,3 +243,20 @@ func test_a_ui_activation_that_does_nothing_is_not_an_interaction() -> void:
 	var label := auto_free(Label.new()) as Label
 	assert_bool(s._ui._activate(label)).is_false()
 	assert_int(s._observation._window_until).is_equal(-1)
+
+
+## An observable with no position (a game-manager Node).
+class Manager:
+	extends Node
+
+	func glitchscout_observe() -> Dictionary:
+		return {"id": "game_state", "type": "game_state", "flags": {"door_open": true}}
+
+
+func test_an_observable_with_no_position_is_always_in_view() -> void:
+	var m := Manager.new()
+	m.add_to_group("glitchscout_observable")
+	things.add_child(m)
+	level.get_node("Player").global_position = Vector3(40, 1, 0)
+	var obs := await _observe({"sections": ["entities"], "radius": 5})
+	assert_array(_ids(obs.entities)).contains(["game_state"])

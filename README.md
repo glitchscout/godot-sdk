@@ -36,6 +36,8 @@ overrides the node path as its identifier. Glitchscout computes distances from t
 | `glitchscout_hazard` | spikes, lava, projectiles | `radius` (required), `type`, `damage`; velocity is read from a body or `velocity` |
 | `glitchscout_observable` | anything else worth watching | `type`, plus any other fields (sent as `properties`) |
 
+A node that isn't a `Node2D` or `Node3D` (a game manager, say) has no position, so no radius leaves it out.
+
 Nothing is marked by guessing: `gscout doctor` lists groups whose names look like pickups, crates or hazards,
 and you decide whether to add them.
 

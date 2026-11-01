@@ -18,7 +18,7 @@ const MENU := preload("res://fixture/ui/main_menu.tscn")
 const FIRST_LEVEL := "res://fixture/levels/flat.tscn"
 const LEVELS := {"flat": FIRST_LEVEL, "course": "res://fixture/levels/course.tscn"}
 const SAVE_SLOT := "res://fixture/saves/%s.json"
-const USER_SLOT := "user://glitchscout_saves/%s.json" ## where save_game writes; load_save looks here first
+const USER_SLOT := "user://glitchscout_saves/%s.json" ## where save_game writes; load_save looks here second
 const COMMANDS := [
 	"set_flag", "god_mode", "give_item", "set_time", "save_game", "load_save", "load_scene",
 	"crash_now", "hang", "log_error", "leak_memory", "drop_connection", "send_malformed", "slow_frames", "softlock_door",
@@ -181,6 +181,8 @@ func _save_game(args: Dictionary) -> Variant:
 	var slot := str(args.get("slot", ""))
 	if slot.is_empty() or not slot.is_valid_filename():
 		return "save_game needs a slot (a plain file name)"
+	if FileAccess.file_exists(SAVE_SLOT % slot):
+		return "%s is a bundled save fixture; save to another slot" % slot
 	var saved_flags := flags.duplicate()
 	if not drop_flag_on_save.is_empty():
 		saved_flags.erase(drop_flag_on_save)
@@ -202,7 +204,8 @@ func _save_game(args: Dictionary) -> Variant:
 
 func _load_save(args: Dictionary) -> Variant:
 	var slot := str(args.get("slot", ""))
-	var path := str(args.get("path", USER_SLOT % slot if FileAccess.file_exists(USER_SLOT % slot) else SAVE_SLOT % slot))
+	# A bundled fixture wins over a slot save_game wrote, so a stray save can't shadow it.
+	var path := str(args.get("path", SAVE_SLOT % slot if FileAccess.file_exists(SAVE_SLOT % slot) else USER_SLOT % slot))
 	if not FileAccess.file_exists(path):
 		return "no save at %s" % path
 	var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
