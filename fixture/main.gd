@@ -13,6 +13,7 @@ extends Node
 ##   slow_frames {ms}                               every frame takes at least ms (0 stops it)
 ##   softlock_door                                  the next door opened jams shut
 ##   corrupt_save {flag}                            the next save_game leaves out that flag
+##   trap_focus                                     the menu's Options opens a panel focus can't leave
 
 const MENU := preload("res://fixture/ui/main_menu.tscn")
 const FIRST_LEVEL := "res://fixture/levels/flat.tscn"
@@ -22,7 +23,7 @@ const USER_SLOT := "user://glitchscout_saves/%s.json" ## where save_game writes;
 const COMMANDS := [
 	"set_flag", "god_mode", "give_item", "set_time", "save_game", "load_save", "load_scene",
 	"crash_now", "hang", "log_error", "leak_memory", "drop_connection", "send_malformed", "slow_frames", "softlock_door",
-	"corrupt_save",
+	"corrupt_save", "trap_focus",
 ]
 
 var state := "menu"
@@ -41,6 +42,7 @@ var drop_in := -1
 var slow_ms := 0
 var jam_next_door := false
 var drop_flag_on_save := "" ## corrupt_save: the flag the next save leaves out
+var trap_focus := false
 var leaked_bytes := 0
 var _leak_per_second := 0
 var _leaked: Array[PackedByteArray] = []
@@ -71,6 +73,7 @@ func _ready() -> void:
 		gs.register_command("slow_frames", _slow_frames, "Fault: make every frame slow", {"ms": "int"})
 		gs.register_command("softlock_door", _softlock_door, "Fault: the next door opened jams shut")
 		gs.register_command("corrupt_save", _corrupt_save, "Fault: the next save leaves out a flag", {"flag": "string"})
+		gs.register_command("trap_focus", _trap_focus, "Fault: the menu's Options opens a panel focus can't leave")
 		gs.set_reset_handler(reset)
 
 
@@ -95,6 +98,7 @@ func player() -> Node3D:
 func _show_menu() -> void:
 	var menu := MENU.instantiate()
 	menu.new_game.connect(_start_new_game)
+	menu.trap_focus = trap_focus
 	add_child(menu)
 	state = "menu"
 
@@ -139,6 +143,12 @@ func reset() -> void:
 	_disarm_faults()
 	if _level:
 		_enter_level(_level_path)
+	elif state == "menu":
+		var menu := get_node_or_null("MainMenu")
+		if menu:
+			remove_child(menu)
+			menu.queue_free()
+		_show_menu()
 
 
 func _set_flag(args: Dictionary) -> Variant:
@@ -262,6 +272,7 @@ func _disarm_faults() -> void:
 	slow_ms = 0
 	jam_next_door = false
 	drop_flag_on_save = ""
+	trap_focus = false
 	_leak_per_second = 0
 	_leaked.clear()
 	leaked_bytes = 0
@@ -330,6 +341,14 @@ func _corrupt_save(args: Dictionary) -> Variant:
 	drop_flag_on_save = str(args.get("flag", ""))
 	if drop_flag_on_save.is_empty():
 		return "corrupt_save needs the flag to leave out"
+	return null
+
+
+func _trap_focus(_args: Dictionary) -> Variant:
+	trap_focus = true
+	var menu := get_node_or_null("MainMenu")
+	if menu:
+		menu.trap_focus = true
 	return null
 
 
