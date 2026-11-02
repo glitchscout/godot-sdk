@@ -93,7 +93,7 @@ func test_manifest_lists_commands_and_the_capabilities_they_bring() -> void:
 	var hello := await wait_message("HELLO")
 	var m: Dictionary = hello.payload.manifest
 	var names: Array = m.commands.map(func(c): return c.name)
-	assert_array(names).contains(["teleport", "set_flag", "god_mode", "save_game", "load_save", "give_item", "set_time", "load_scene", "set_seed", "time_scale", "corrupt_save"])
+	assert_array(names).contains(["teleport", "set_flag", "god_mode", "save_game", "load_save", "give_item", "set_time", "load_scene", "set_seed", "time_scale", "corrupt_save", "trap_focus"])
 	var set_flag: Dictionary = m.commands.filter(func(c): return c.name == "set_flag")[0]
 	assert_str(set_flag.description).is_not_empty()
 	assert_bool(m.supports.god_mode).is_true()
@@ -223,3 +223,40 @@ func test_a_bundled_fixture_wins_over_a_stray_save_of_the_same_name() -> void:
 	DirAccess.remove_absolute("user://glitchscout_saves/intro.json")
 	assert_bool(game.flags.has("stale")).is_false()
 	assert_bool(game.flags.tutorial_skipped).is_true()
+
+
+func test_trap_focus_makes_options_a_menu_focus_cannot_leave() -> void:
+	_start_game()
+	await _ready_sdk()
+	assert_str((await _cmd("trap_focus")).message_type).is_equal("ACK")
+	var menu: Node = game.get_node("MainMenu")
+	menu.get_node("Buttons/Options").pressed.emit()
+	await get_tree().process_frame
+	var trap: Control = menu.get_node("Trap")
+	assert_bool(trap.visible).is_true()
+	assert_bool(menu.get_node("Buttons").visible).is_false()
+	var buttons := trap.get_children()
+	assert_int(buttons.size()).is_equal(3)
+	assert_bool(buttons[0].has_focus()).is_true()
+	assert_str(buttons[0].get_meta("glitchscout_id")).is_equal("settings_trap/sound")
+	for b: Button in buttons:
+		for side in [SIDE_LEFT, SIDE_TOP, SIDE_RIGHT, SIDE_BOTTOM]:
+			var next := b.find_valid_focus_neighbor(side)
+			assert_bool(trap.is_ancestor_of(next)).is_true()
+		b.pressed.emit()
+	assert_bool(trap.visible).is_true() # its buttons do nothing
+
+
+func test_a_reset_on_the_menu_gives_a_fresh_menu_and_disarms_the_trap() -> void:
+	_start_game()
+	await _ready_sdk()
+	await _cmd("trap_focus")
+	var menu: Node = game.get_node("MainMenu")
+	menu.get_node("Buttons/Options").pressed.emit()
+	game.reset()
+	var fresh: Node = game.get_node("MainMenu")
+	assert_object(fresh).is_not_same(menu)
+	assert_bool(fresh.get_node("Buttons").visible).is_true()
+	fresh.get_node("Buttons/Options").pressed.emit()
+	assert_bool(fresh.get_node("Options").visible).is_true()
+	assert_object(fresh.get_node_or_null("Trap")).is_null()
