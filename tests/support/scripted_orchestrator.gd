@@ -10,6 +10,7 @@ var vars := {} ## values steps record for the test to read after done()
 var _tcp := TCPServer.new()
 var _peer: WebSocketPeer
 var _received: Array = []
+var _frames: Array[Dictionary] = [] ## headers of the binary frames, in arrival order
 var _consumed := {} ## message index -> true once a step took it
 var _steps: Array[Callable] = []
 var _index := 0
@@ -102,6 +103,17 @@ func _poll() -> void:
 			_mutex.unlock()
 		else:
 			MockOrchestrator.save_frame(packet)
+			_mutex.lock()
+			_frames.append(MockOrchestrator.parse_header(packet))
+			_mutex.unlock()
+
+
+## The headers of the binary frames so far. A frame the SDK sent before a reply is here once the reply is.
+func frames() -> Array[Dictionary]:
+	_mutex.lock()
+	var out := _frames.duplicate()
+	_mutex.unlock()
+	return out
 
 
 ## The next message of a type that no step has taken yet, or {}. Steps call it from the thread.

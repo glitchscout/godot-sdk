@@ -75,7 +75,7 @@ func test_defaults_without_settings() -> void:
 func test_supports_lists_every_capability() -> void:
 	var supports: Dictionary = _manifest().supports
 	assert_array(supports.keys()).contains_exactly_in_any_order([
-		"step_mode", "reset_tiers", "navmesh", "nav_links", "ui_tree", "screenshots", "seed", "save_fixtures", "god_mode",
+		"step_mode", "reset_tiers", "navmesh", "nav_links", "ui_tree", "screenshots", "live_view", "seed", "save_fixtures", "god_mode",
 	])
 	assert_bool(supports.reset_tiers is Array).is_true()
 

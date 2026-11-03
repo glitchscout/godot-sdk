@@ -127,6 +127,11 @@ visual baselines are lossless PNG at full resolution, up to the protocol's 4 MB 
 a 4 MiB WebSocket send buffer; frames bigger than the buffer it gets go out in chunks, without blocking the
 game.
 
+Glitchscout can also ask for a stream of frames, one every N ticks, to build a video of a failed test in game
+time. Frames are captured while the game is held, so they add wall time (a few milliseconds a frame) but never
+change game timing. A frame that can't be sent is skipped. Streaming needs a renderer too, so a `--headless`
+run has no video.
+
 ## Events and logs
 
 `gs.event("dialogue_started", {"npc_id": "elder"})`, with `gs` looked up as under Reset, reports a game
