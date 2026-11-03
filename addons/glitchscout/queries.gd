@@ -9,6 +9,7 @@ extends RefCounted
 
 const LINK_TYPE_META := "glitchscout_link_type"
 const REACH_TOLERANCE := 0.5 ## a path counts as reaching its target if it ends this close
+const REACH_HEIGHT := 2.0 ## in 3D, how far above or below the navmesh a target may be: origins stand above the floor
 const MAX_SAMPLE_POINTS := 10000
 const DEFAULT_FIND_MAX_N := 100
 
@@ -158,7 +159,11 @@ func _reaches(path: Dictionary, to: Vector3) -> bool:
 		return false
 	if path.get("grid", false):
 		return _cell(pts.back()) == _cell(to)
-	return pts.back().distance_to(to) <= REACH_TOLERANCE
+	var end: Vector3 = pts.back()
+	if _mode() == "3d":
+		var ground := Vector2(end.x, end.z).distance_to(Vector2(to.x, to.z))
+		return ground <= REACH_TOLERANCE and absf(end.y - to.y) <= REACH_HEIGHT
+	return end.distance_to(to) <= REACH_TOLERANCE
 
 
 func _nav_path(from: Vector3, to: Vector3) -> Dictionary:

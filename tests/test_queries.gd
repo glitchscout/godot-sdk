@@ -105,6 +105,19 @@ func test_nav_path_segments_carry_link_types() -> void:
 	assert_float(r.length).is_greater(19.0)
 
 
+## An entity stands on the floor with its origin above the navmesh, and that doesn't put it out of reach.
+func test_a_target_standing_on_the_floor_is_reachable() -> void:
+	await _build()
+	var r: Dictionary = (await _query("nav_path", {"from": _v(1, 1, 0), "to": _v(8, 1, 1)})).payload.result
+	assert_bool(r.reachable).is_true()
+
+
+func test_a_target_far_above_the_floor_is_not_reachable() -> void:
+	await _build()
+	var r: Dictionary = (await _query("nav_path", {"from": _v(1, 0, 0), "to": _v(8, 10, 1)})).payload.result
+	assert_bool(r.reachable).is_false()
+
+
 func test_a_link_without_metadata_is_a_drop_when_it_falls() -> void:
 	await _build(true, "", -3.0)
 	var r: Dictionary = (await _query("nav_path", {"from": _v(1, 0, 0), "to": _v(20, -3, 0)})).payload.result
