@@ -26,7 +26,7 @@ const SHAPES := {
 	"COMMAND": {"name": [STRING, true], "args": [OBJECT]},
 	"STATE_CTRL": {"op": [STRING, true, ["RELOAD_SCENE", "SAVE", "LOAD"]], "slot": [STRING]},
 	"QUERY": {"kind": [STRING, true], "params": [OBJECT, true]},
-	"CAPTURE": {"encoding": [STRING, true, ["png", "jpeg"]], "max_long_edge": [INT], "lossless": [BOOL]},
+	"CAPTURE": {"encoding": [STRING, true, ["png", "jpeg"]], "max_long_edge": [INT], "lossless": [BOOL], "every_n_ticks": [INT]},
 }
 ## Message types whose payload needs at least one field.
 const NOT_EMPTY := ["ACTION_INJECT"]

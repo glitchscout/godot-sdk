@@ -1,5 +1,5 @@
 extends RefCounted
-## CAPTURE: screenshots as binary-frame-v1 messages (protocol's binary-frame-v1.md).
+## CAPTURE: screenshots and live-view streams as binary-frame-v1 messages (protocol's binary-frame-v1.md).
 ##
 ## Routine frames are kept to 256 KB: the requested encoding, then JPEG at lower qualities, then
 ## downscales. Lossless baselines are PNG at full resolution and only need to fit the 4 MB frame cap.
@@ -7,6 +7,7 @@ extends RefCounted
 ## GlitchscoutSDK.send_frame).
 
 const FRAME_SCREENSHOT := 1
+const FRAME_LIVE_VIEW := 2
 const ENCODING_PNG := 1
 const ENCODING_JPEG := 2
 const FLAG_FINAL := 1 << 0
@@ -18,11 +19,14 @@ const HEADER_BYTES := 64
 const MAX_FRAME_BYTES := 4194304 ## header plus payload, per assembled frame
 const ROUTINE_MAX_BYTES := 262144
 const MAX_CHUNK_BYTES := 1048576
-const JPEG_QUALITY := 0.9
+const JPEG_QUALITY := 0.85
 const CAP_QUALITIES := [0.75, 0.6, 0.45]
 const MIN_LONG_EDGE := 64
+const STREAM_MAX_WAITING := 8 ## messages waiting to leave before a stream skips its frame
 
 var sdk: Node
+var _stream := {} ## the CAPTURE that started the live-view stream
+var _next_stream_tick := 0
 
 
 func _init(owner: Node) -> void:
@@ -30,7 +34,10 @@ func _init(owner: Node) -> void:
 
 
 func on_capture(msg: Dictionary) -> void:
-	var image: Image = sdk.capture_source.call() if sdk.capture_source.is_valid() else viewport_image(sdk)
+	if msg.payload.has("every_n_ticks"):
+		_start_stream(msg)
+		return
+	var image := _image()
 	if image == null or image.is_empty():
 		sdk.reply_error(msg, "capture_unavailable", "there is no rendered frame to capture (a headless run, or no renderer)")
 		return
@@ -49,6 +56,51 @@ func on_capture(msg: Dictionary) -> void:
 			sdk.reply_error(msg, "frame_send_failed", "the frame couldn't be sent (the send buffer stayed full)", true)
 		else:
 			sdk.reply(msg, "ACK", {"result": {"tick_frame": tick, "frames": sent}}))
+
+
+## Called at the start of every frame, before step mode can hold it, so a STEP's frames leave before its
+## ACK. The game is held or about to be, so capturing never changes game timing.
+func frame_start() -> void:
+	if _stream.is_empty() or sdk.tick < _next_stream_tick:
+		return
+	var every := int(_stream.payload.every_n_ticks)
+	_next_stream_tick = sdk.tick - sdk.tick % every + every
+	if sdk.state != sdk.State.READY or sdk.outbox_size() >= STREAM_MAX_WAITING:
+		return # a gap in tick_frame: the reader copes, and a slow reader mustn't grow this queue
+	var image := _image()
+	if image == null or image.is_empty():
+		return
+	var r := render(image, _stream.payload)
+	if r.has("error"):
+		return
+	var f := {
+		"frame_type": FRAME_LIVE_VIEW, "encoding": r.encoding, "flags": r.flags, "tick_frame": sdk.tick,
+		"request_id": str(_stream.get("id", "")), "width": r.width, "height": r.height,
+		"source_width": r.source_width, "source_height": r.source_height,
+	}
+	sdk.send_frame(r.payload, f, func(_sent: int) -> void: pass)
+
+
+## A session that isn't a resume has no stream.
+func end_stream() -> void:
+	_stream = {}
+
+
+func _start_stream(msg: Dictionary) -> void:
+	var every := int(msg.payload.every_n_ticks)
+	if every < 1:
+		sdk.reply_error(msg, "bad_request", "every_n_ticks must be at least 1")
+		return
+	if not sdk.capture_source.is_valid() and not available():
+		sdk.reply_error(msg, "capture_unavailable", "there are no rendered frames to stream (a headless run, or no renderer)")
+		return
+	_stream = msg
+	_next_stream_tick = sdk.tick - sdk.tick % every + every
+	sdk.reply(msg, "ACK", {"result": {"tick_frame": sdk.tick, "frames": 0}})
+
+
+func _image() -> Image:
+	return sdk.capture_source.call() if sdk.capture_source.is_valid() else viewport_image(sdk)
 
 
 ## What a viewport last rendered, or null when nothing renders (headless).

@@ -41,3 +41,15 @@ func test_routine_capture_of_the_viewport_fits_the_cap() -> void:
 	assert_int(orch.frames.size()).is_equal(1)
 	assert_int(orch.frames[0].size()).is_less_equal(262144)
 	assert_int(MockOrchestrator.parse_header(orch.frames[0]).width).is_less_equal(640)
+
+
+func test_a_stream_sends_what_the_viewport_rendered() -> void:
+	start_sdk()
+	await handshake()
+	assert_bool(orch.messages("HELLO")[0].payload.manifest.supports.live_view).is_true()
+	var m := await request("CAPTURE", {"encoding": "jpeg", "max_long_edge": 1280, "every_n_ticks": 4})
+	assert_str(m.message_type).is_equal("ACK")
+	assert_bool(await pump_until(func() -> bool: return orch.frames.size() >= 2)).is_true()
+	var h := MockOrchestrator.parse_header(orch.frames[0])
+	assert_int(h.frame_type).is_equal(2)
+	assert_int(orch.frames[0].size()).is_less_equal(262144)

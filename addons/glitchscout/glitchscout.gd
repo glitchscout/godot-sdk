@@ -56,7 +56,7 @@ var resume_window_ms := 30000
 ## Capabilities advertised in the manifest. Each SDK feature switches its own on.
 var supports := {
 	"step_mode": true, "reset_tiers": [1], "navmesh": false, "nav_links": false, "ui_tree": true,
-	"screenshots": false, "seed": false, "save_fixtures": false, "god_mode": false,
+	"screenshots": false, "live_view": false, "seed": false, "save_fixtures": false, "god_mode": false,
 }
 ## Debug commands, events and entity types the game registered, for the manifest.
 ## "step" holds the game between STEPs; "realtime" lets it run (--glitchscout-time).
@@ -174,6 +174,7 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
+	_capture.frame_start()
 	if _step.frame_start(): # may hold right here until the next STEP
 		_injection.frame_start()
 		_observation.frame_start()
@@ -375,6 +376,11 @@ func send_frame(payload: PackedByteArray, f: Dictionary, done: Callable) -> void
 	_flush_outbox()
 
 
+## How many messages are waiting to leave.
+func outbox_size() -> int:
+	return _outbox.size()
+
+
 func _frame_room() -> int:
 	if _peer == null or _peer.get_ready_state() != WebSocketPeer.STATE_OPEN:
 		return 0
@@ -547,6 +553,8 @@ func _on_text(text: String) -> void:
 
 func _on_hello_ack(payload: Dictionary) -> void:
 	session_id = str(payload.get("session", ""))
+	if not payload.get("resumed", false):
+		_capture.end_stream()
 	_dropped_ms = 0
 	_next_heartbeat_ms = Time.get_ticks_msec() + heartbeat_interval_ms
 	_set_state(State.READY)
@@ -622,6 +630,7 @@ func _supports() -> Dictionary:
 	s.save_fixtures = s.save_fixtures or "load_save" in available
 	s.seed = s.seed or "set_seed" in available
 	s.screenshots = Capture.available()
+	s.live_view = Capture.available()
 	if is_inside_tree():
 		s.navmesh = _queries.has_navmesh()
 		s.nav_links = _queries.has_nav_links()

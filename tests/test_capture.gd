@@ -131,6 +131,95 @@ func test_frames_are_chunked_when_the_send_buffer_is_small() -> void:
 	assert_bool(back.get_data() == img.get_data()).is_true()
 
 
+func test_a_stream_acks_then_sends_live_view_frames_on_tick_multiples() -> void:
+	await _ready_sdk()
+	sdk.capture_source = func() -> Image: return _noise(64, 32)
+	var m := await request("CAPTURE", {"encoding": "jpeg", "max_long_edge": 32, "every_n_ticks": 2})
+	assert_str(m.message_type).is_equal("ACK")
+	assert_int(int(m.payload.result.frames)).is_equal(0)
+	assert_bool(await pump_until(func() -> bool: return orch.frames.size() >= 3)).is_true()
+	for f: PackedByteArray in orch.frames:
+		var h := MockOrchestrator.parse_header(f)
+		assert_int(h.frame_type).is_equal(Capture.FRAME_LIVE_VIEW)
+		assert_int(h.encoding).is_equal(Capture.ENCODING_JPEG)
+		assert_str(h.request_id).is_equal(m.reply_to)
+		assert_int(h.width).is_equal(32)
+		assert_int(h.tick_frame % 2).is_equal(0)
+
+
+func test_a_new_stream_replaces_the_old_one() -> void:
+	await _ready_sdk()
+	sdk.capture_source = func() -> Image: return _noise(16, 16)
+	await request("CAPTURE", {"encoding": "jpeg", "every_n_ticks": 1})
+	var second := await request("CAPTURE", {"encoding": "jpeg", "every_n_ticks": 1})
+	orch.frames.clear()
+	assert_bool(await pump_until(func() -> bool: return orch.frames.size() >= 3)).is_true()
+	assert_str(MockOrchestrator.parse_header(orch.frames[-1]).request_id).is_equal(second.reply_to)
+
+
+## Just enough SDK for capture.gd, with a send queue the test controls.
+class StubSdk:
+	extends Node
+
+	enum State { READY }
+	var state := State.READY
+	var tick := 0
+	var capture_source := Callable()
+	var waiting := 0
+	var sent := 0
+
+	func outbox_size() -> int:
+		return waiting
+
+	func send_frame(_payload: PackedByteArray, _f: Dictionary, _done: Callable) -> void:
+		sent += 1
+
+	func reply(_msg: Dictionary, _type: String, _payload: Dictionary) -> void:
+		pass
+
+
+func test_a_stream_skips_frames_while_messages_are_backed_up() -> void:
+	var stub: StubSdk = auto_free(StubSdk.new())
+	stub.capture_source = func() -> Image: return _noise(16, 16)
+	var capture := Capture.new(stub)
+	capture.on_capture({"id": "00000000-0000-4000-8000-000000000001", "payload": {"encoding": "jpeg", "every_n_ticks": 1}})
+	stub.waiting = Capture.STREAM_MAX_WAITING
+	stub.tick = 1
+	capture.frame_start()
+	assert_int(stub.sent).is_equal(0)
+	stub.waiting = 0
+	stub.tick = 2
+	capture.frame_start()
+	assert_int(stub.sent).is_equal(1)
+
+
+func test_without_a_renderer_a_stream_is_refused_and_not_advertised() -> void:
+	await _ready_sdk()
+	assert_bool(orch.messages("HELLO")[0].payload.manifest.supports.live_view).is_false() # headless run
+	var m := await request("CAPTURE", {"encoding": "jpeg", "every_n_ticks": 4})
+	assert_str(m.message_type).is_equal("ERROR")
+	assert_str(m.payload.code).is_equal("capture_unavailable")
+
+
+func test_a_new_session_ends_the_stream() -> void:
+	await _ready_sdk()
+	sdk.capture_source = func() -> Image: return _noise(16, 16)
+	await request("CAPTURE", {"encoding": "jpeg", "every_n_ticks": 1})
+	sdk._on_hello_ack({"session": "s-2", "resumed": false})
+	orch.frames.clear()
+	await pump_until(func() -> bool: return false, 200)
+	assert_int(orch.frames.size()).is_equal(0)
+
+
+func test_a_resume_keeps_the_stream() -> void:
+	await _ready_sdk()
+	sdk.capture_source = func() -> Image: return _noise(16, 16)
+	await request("CAPTURE", {"encoding": "jpeg", "every_n_ticks": 1})
+	sdk._on_hello_ack({"session": "s-1", "resumed": true})
+	orch.frames.clear()
+	assert_bool(await pump_until(func() -> bool: return orch.frames.size() >= 1)).is_true()
+
+
 func test_without_a_renderer_capture_is_refused_and_not_advertised() -> void:
 	await _ready_sdk()
 	assert_bool(orch.messages("HELLO")[0].payload.manifest.supports.screenshots).is_false() # headless run

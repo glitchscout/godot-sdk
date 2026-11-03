@@ -86,6 +86,30 @@ func _exact_steps(method: String) -> void:
 	assert_int(int(three.tick_frame)).is_equal(int(three.payload.result.tick_frame))
 
 
+func test_a_step_sends_its_stream_frames_before_its_ack() -> void:
+	_start()
+	sdk.capture_source = func() -> Image:
+		var img := Image.create_empty(16, 16, false, Image.FORMAT_RGB8)
+		return img
+	var ok: bool = await _run([
+		orch.ack_hello(), orch.wait_ms(150),
+		orch.request("CAPTURE", {"encoding": "jpeg", "every_n_ticks": 4}, "stream"), orch.reply_to("stream"),
+		orch.request("STEP", {"ticks": 8}, "eight"), orch.reply_to("eight"),
+		orch.call_once(func(): orch.vars.frames = orch.frames()),
+		_snap("s0"), orch.wait_ms(150), _snap("s1"),
+		orch.goodbye(),
+	])
+	assert_bool(ok).is_true()
+	var frames: Array = orch.vars.frames
+	assert_int(frames.size()).is_equal(2)
+	var end := int(orch.vars.eight_reply.payload.result.tick_frame)
+	assert_int(frames[-1].tick_frame).is_equal(end - end % 4)
+	for h: Dictionary in frames:
+		assert_int(h.tick_frame % 4).is_equal(0)
+		assert_str(h.request_id).is_equal(orch.vars.stream_reply.reply_to)
+	assert_array(orch.vars.s1).is_equal(orch.vars.s0) # capturing didn't let the game run on
+
+
 func test_holds_from_the_handshake_until_the_first_step() -> void:
 	_start()
 	var ok: bool = await _run([orch.ack_hello(), orch.wait_ms(150), _snap("a"), orch.wait_ms(300), _snap("b"), orch.goodbye()])
