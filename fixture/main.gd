@@ -23,7 +23,7 @@ const USER_SLOT := "user://glitchscout_saves/%s.json" ## where save_game writes;
 const COMMANDS := [
 	"set_flag", "god_mode", "give_item", "set_time", "save_game", "load_save", "load_scene",
 	"crash_now", "hang", "log_error", "leak_memory", "drop_connection", "send_malformed", "slow_frames", "softlock_door",
-	"corrupt_save", "trap_focus",
+	"corrupt_save", "trap_focus", "missing_texture",
 ]
 
 var state := "menu"
@@ -74,6 +74,7 @@ func _ready() -> void:
 		gs.register_command("softlock_door", _softlock_door, "Fault: the next door opened jams shut")
 		gs.register_command("corrupt_save", _corrupt_save, "Fault: the next save leaves out a flag", {"flag": "string"})
 		gs.register_command("trap_focus", _trap_focus, "Fault: the menu's Options opens a panel focus can't leave")
+		gs.register_command("missing_texture", _missing_texture, "Fault: a mesh in the level loses its texture")
 		gs.set_reset_handler(reset)
 
 
@@ -341,6 +342,25 @@ func _corrupt_save(args: Dictionary) -> Variant:
 	drop_flag_on_save = str(args.get("flag", ""))
 	if drop_flag_on_save.is_empty():
 		return "corrupt_save needs the flag to leave out"
+	return null
+
+
+## This level draws no meshes of its own, so the fault adds one, in the colour engines use for a missing texture.
+## A reset rebuilds the level without it.
+func _missing_texture(_args: Dictionary) -> Variant:
+	if _level == null:
+		return "missing_texture needs a level"
+	var box := BoxMesh.new()
+	box.size = Vector3(4, 4, 4)
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.albedo_color = Color.MAGENTA
+	var mesh := MeshInstance3D.new()
+	mesh.name = "MissingTexture"
+	mesh.mesh = box
+	mesh.material_override = material
+	mesh.position = Vector3(0, 0, -4) # where the level's camera looks
+	_level.add_child(mesh)
 	return null
 
 

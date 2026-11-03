@@ -93,7 +93,7 @@ func test_manifest_lists_commands_and_the_capabilities_they_bring() -> void:
 	var hello := await wait_message("HELLO")
 	var m: Dictionary = hello.payload.manifest
 	var names: Array = m.commands.map(func(c): return c.name)
-	assert_array(names).contains(["teleport", "set_flag", "god_mode", "save_game", "load_save", "give_item", "set_time", "load_scene", "set_seed", "time_scale", "corrupt_save", "trap_focus"])
+	assert_array(names).contains(["teleport", "set_flag", "god_mode", "save_game", "load_save", "give_item", "set_time", "load_scene", "set_seed", "time_scale", "corrupt_save", "trap_focus", "missing_texture"])
 	var set_flag: Dictionary = m.commands.filter(func(c): return c.name == "set_flag")[0]
 	assert_str(set_flag.description).is_not_empty()
 	assert_bool(m.supports.god_mode).is_true()
@@ -223,6 +223,24 @@ func test_a_bundled_fixture_wins_over_a_stray_save_of_the_same_name() -> void:
 	DirAccess.remove_absolute("user://glitchscout_saves/intro.json")
 	assert_bool(game.flags.has("stale")).is_false()
 	assert_bool(game.flags.tutorial_skipped).is_true()
+
+
+func test_missing_texture_shows_a_magenta_mesh_in_the_level() -> void:
+	_start_game()
+	await _ready_sdk()
+	assert_str((await _cmd("load_scene", {"scene": "course"})).message_type).is_equal("ACK")
+	assert_str((await _cmd("missing_texture")).message_type).is_equal("ACK")
+	var mesh: MeshInstance3D = game.find_child("MissingTexture", true, false)
+	assert_object(mesh).is_not_null()
+	var material: StandardMaterial3D = mesh.material_override
+	assert_int(material.shading_mode).is_equal(BaseMaterial3D.SHADING_MODE_UNSHADED)
+	assert_object(material.albedo_color).is_equal(Color.MAGENTA)
+
+
+func test_missing_texture_needs_a_level() -> void:
+	_start_game()
+	await _ready_sdk()
+	assert_str((await _cmd("missing_texture")).message_type).is_equal("ERROR")
 
 
 func test_trap_focus_makes_options_a_menu_focus_cannot_leave() -> void:
