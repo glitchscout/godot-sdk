@@ -69,7 +69,8 @@ func test_defaults_without_settings() -> void:
 		ProjectSettings.set_setting(k, null)
 	var m := _manifest()
 	assert_str(m.movement_space).is_equal("camera")
-	assert_float(m.physics_hints.units_per_meter).is_equal(1.0)
+	# Unset, it isn't sent: the orchestrator's default depends on whether the game is 2D or 3D, which this can't know.
+	assert_bool(m.physics_hints.has("units_per_meter")).is_false()
 
 
 func test_supports_lists_every_capability() -> void:

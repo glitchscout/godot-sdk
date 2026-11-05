@@ -17,7 +17,7 @@ Optional project settings:
 | `glitchscout/movement_space` | `camera` | How movement input is interpreted: `camera`, `world` or `screen` |
 | `glitchscout/physics/move_speed` | unset | Player move speed, units per second |
 | `glitchscout/physics/jump_height` | unset | Player jump height, units |
-| `glitchscout/physics/units_per_meter` | `1.0` | World units per meter |
+| `glitchscout/physics/units_per_meter` | unset | World units per meter. Unset, Glitchscout assumes 32 for a 2D game and 1 for a 3D one |
 | `glitchscout/camera_actions`, `glitchscout/combat_actions` | empty | Input actions that steer the camera or fight |
 | `glitchscout/axes` | empty | Virtual 2D axes Glitchscout can drive with one analog input, `{name: [negative_x, positive_x, negative_y, positive_y]}` in `Input.get_vector` order, e.g. `{"move": ["move_left", "move_right", "move_forward", "move_back"]}` |
 | `glitchscout/step/method` | `hold` | How step mode makes the game wait between steps: `hold` blocks the main loop (nothing in the game runs or notices); `pause` pauses the scene tree instead, for games where blocking doesn't work |
