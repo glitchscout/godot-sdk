@@ -32,6 +32,7 @@ const THREAT_KEYS := ["type", "health", "attack_range", "state"]
 const SECTIONS := ["player", "interactables", "camera", "threats", "hazards", "ui_elements", "entities"]
 const WATCHED := ["state", "enabled", "collision"] ## facts an interaction can change
 const WATCHED_SECTIONS := ["interactables", "entities"]
+const NON_FINITE_FLAG := "non_finite" ## on the player: some value in this observation was NaN or infinite
 
 var sdk: Node
 
@@ -49,6 +50,7 @@ var _effects := {} ## ids of the entities the last observe() found changed in th
 var _last_effects := {} ## those ids at the last STATE_UPDATE
 var _actions := {} ## the actions interactables require, as of _actions_tick
 var _actions_tick := -1
+var _non_finite := false ## this observation met a NaN or an infinity, which JSON can't carry
 
 
 func _init(owner: Node) -> void:
@@ -230,6 +232,7 @@ func observe(filter: Dictionary) -> Dictionary:
 	var player := _player_node()
 	var origin := _position(player) if player else _camera_position()
 	var obs := {}
+	_non_finite = false
 	if "player" in sections and player:
 		obs.player = _player(player, _info(player))
 	if "camera" in sections:
@@ -270,6 +273,8 @@ func observe(filter: Dictionary) -> Dictionary:
 			for item in items:
 				item.erase("distance")
 		obs[section] = items
+	if _non_finite and obs.has("player") and not NON_FINITE_FLAG in obs.player.state_flags:
+		obs.player.state_flags.append(NON_FINITE_FLAG)
 	return obs
 
 
@@ -314,7 +319,10 @@ func _player(node: Node, info: Dictionary) -> Dictionary:
 		if not str(f) in flags:
 			flags.append(str(f))
 	var p := {"position": _vec(_position(node)), "velocity": _vec(_velocity(node, info)), "state_flags": flags}
-	var health: Variant = _num(info.get("health"))
+	var raw_health: Variant = info.get("health")
+	if raw_health is float and not is_finite(raw_health):
+		_non_finite = true
+	var health: Variant = _num(raw_health)
 	if health != null:
 		p.health = health
 	var scene := _scene_of(node)
@@ -346,7 +354,7 @@ func _item(section: String, node: Node, origin: Vector3) -> Dictionary:
 	var pos := _position(node)
 	# A node with no position (a game manager, say) is everywhere: distance 0, so no radius cuts it.
 	var spatial := node is Node3D or node is Node2D
-	var item := {"id": _id(node, info), "position": _vec(pos), "distance": snappedf(pos.distance_to(origin), 0.001) if spatial else 0.0}
+	var item := {"id": _id(node, info), "position": _vec(pos), "distance": _finite(pos.distance_to(origin), 0.001) if spatial else 0.0}
 	# Game values are coerced to the schema's types: a game's own enums, strings and NaNs must not make the
 	# message invalid (or not JSON at all).
 	match section:
@@ -469,7 +477,7 @@ func _camera() -> Dictionary:
 	if cam3:
 		mode = str(_info(cam3).get("mode", mode))
 		var r := cam3.global_rotation_degrees
-		return {"position": _vec(cam3.global_position), "yaw": snappedf(r.y, 0.001), "pitch": snappedf(r.x, 0.001), "mode": mode}
+		return {"position": _vec(cam3.global_position), "yaw": _finite(r.y, 0.001), "pitch": _finite(r.x, 0.001), "mode": mode}
 	var cam2 := vp.get_camera_2d()
 	if cam2:
 		return {"position": _vec(Vector3(cam2.global_position.x, cam2.global_position.y, 0)), "yaw": 0.0, "pitch": 0.0, "mode": "2d"}
@@ -503,4 +511,12 @@ func _velocity(node: Node, info: Dictionary) -> Vector3:
 
 
 func _vec(v: Vector3) -> Dictionary:
-	return {"x": snappedf(v.x, 0.0001), "y": snappedf(v.y, 0.0001), "z": snappedf(v.z, 0.0001)}
+	return {"x": _finite(v.x, 0.0001), "y": _finite(v.y, 0.0001), "z": _finite(v.z, 0.0001)}
+
+
+## f snapped to step. JSON can't carry a NaN or an infinity, so it becomes 0 and the observation is flagged.
+func _finite(f: float, step: float) -> float:
+	if is_finite(f):
+		return snappedf(f, step)
+	_non_finite = true
+	return 0.0

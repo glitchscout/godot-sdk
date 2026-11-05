@@ -29,7 +29,7 @@ overrides the node path as its identifier. Glitchscout computes distances from t
 
 | Group | Is | Fields from `glitchscout_observe()` |
 |---|---|---|
-| `player` | the player (first node in the group) | `health`, `state_flags`; position, velocity (`CharacterBody`/`RigidBody`) and `is_grounded` are read automatically |
+| `player` | the player (first node in the group) | `health`, `state_flags`; position, velocity (`CharacterBody`/`RigidBody`) and `is_grounded` are read automatically. A NaN or infinity anywhere in the observation is sent as 0 and adds the `non_finite` flag here |
 | `glitchscout_interactable` | doors, levers, pickups, NPCs | `type`, `state`, `enabled`, `required_action`, `interaction_range`, `requires`, `affordance` |
 | `glitchscout_collectible`, `glitchscout_pushable` | added to an interactable: a pickup to route through, an object to push | (sets `affordance` to `collect` or `push`) |
 | `glitchscout_threat` | enemies | `type`, `health`, `attack_range`, `state` |
