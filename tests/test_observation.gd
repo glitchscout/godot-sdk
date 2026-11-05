@@ -69,6 +69,43 @@ func test_player_position_velocity_flags_and_health() -> void:
 
 
 
+## JSON has no NaN or Inf: a game that produces one must not break the message, and must not hide it either.
+func test_a_non_finite_velocity_is_flagged_and_the_message_stays_valid() -> void:
+	var player: CharacterBody3D = level.get_node("Player")
+	player.set_physics_process(false) # it would set its own velocity before the observation
+	player.velocity = Vector3(NAN, 0, INF)
+	var obs := await _observe({"sections": ["player"]})
+	var p: Dictionary = obs.player
+	assert_float(p.velocity.x).is_equal(0.0)
+	assert_float(p.velocity.z).is_equal(0.0)
+	assert_array(p.state_flags).contains(["non_finite"])
+
+
+func test_a_non_finite_entity_position_is_flagged_on_the_player() -> void:
+	var thing := Thing.new()
+	thing.name = "Lost"
+	thing.add_to_group("glitchscout_observable")
+	things.add_child(thing)
+	thing.position = Vector3(NAN, 0, 0)
+	var obs := await _observe({"sections": ["player", "entities"]})
+	assert_array(obs.player.state_flags).contains(["non_finite"])
+	for e: Dictionary in obs.entities:
+		assert_bool(is_finite(e.position.x) and is_finite(e.distance)).is_true()
+
+
+func test_a_non_finite_health_is_flagged() -> void:
+	var player: CharacterBody3D = level.get_node("Player")
+	player.health = INF
+	var obs := await _observe({"sections": ["player"]})
+	assert_bool(obs.player.has("health")).is_false()
+	assert_array(obs.player.state_flags).contains(["non_finite"])
+
+
+func test_finite_values_are_not_flagged() -> void:
+	var obs := await _observe({"sections": ["player"]})
+	assert_array(obs.player.state_flags).not_contains(["non_finite"])
+
+
 ## A player inside a sub-scene of a level (a spawn scene, say) is in the level, not the sub-scene.
 func test_a_player_in_a_sub_scene_reports_the_outermost_scene() -> void:
 	var player: CharacterBody3D = level.get_node("Player")
