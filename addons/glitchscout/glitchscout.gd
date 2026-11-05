@@ -458,8 +458,9 @@ func reply_error(request: Dictionary, code: String, message: String, retryable :
 
 ## The capability manifest sent in HELLO (protocol manifest.schema.json).
 func build_manifest() -> Dictionary:
-	var hints := {"units_per_meter": float(_setting("glitchscout/physics/units_per_meter", 1.0))}
-	for key in ["move_speed", "jump_height"]:
+	var hints := {}
+	# Only what the project sets: the orchestrator's default scale depends on whether the game is 2D or 3D.
+	for key in ["units_per_meter", "move_speed", "jump_height"]:
 		var v: Variant = _setting("glitchscout/physics/" + key, null)
 		if v != null:
 			hints[key] = float(v)
