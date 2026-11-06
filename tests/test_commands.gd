@@ -157,6 +157,24 @@ func test_save_game_round_trips_through_load_save() -> void:
 	assert_str((await _cmd("save_game", {})).payload.code).is_equal("invalid_args")
 
 
+func test_save_game_writes_a_save_fixture_to_a_path() -> void:
+	_start_game()
+	await _ready_sdk()
+	await _cmd("load_save", {"slot": "intro"})
+	await _cmd("set_flag", {"name": "door_open", "value": true})
+	var path := ProjectSettings.globalize_path("user://gs_test_fixture_capture.sav")
+	DirAccess.remove_absolute(path)
+	var saved := await _cmd("save_game", {"path": path})
+	assert_str(saved.message_type).is_equal("ACK")
+	assert_bool(FileAccess.file_exists(path)).is_true()
+	game.reset()
+	var loaded := await _cmd("load_save", {"path": path})
+	assert_str(loaded.message_type).is_equal("ACK")
+	assert_bool(game.flags.door_open).is_true()
+	DirAccess.remove_absolute(path)
+	assert_str((await _cmd("save_game", {"path": "res://fixture/saves/intro.json"})).payload.code).is_equal("invalid_args")
+
+
 func test_corrupt_save_drops_a_flag_from_the_next_save_only() -> void:
 	_start_game()
 	await _ready_sdk()
