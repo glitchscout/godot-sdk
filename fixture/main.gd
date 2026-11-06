@@ -61,7 +61,7 @@ func _ready() -> void:
 		gs.register_command("god_mode", _god_mode, "Makes the player invulnerable", {"enabled": "bool"})
 		gs.register_command("give_item", _give_item, "Adds items to the inventory", {"item": "string", "count": "int"})
 		gs.register_command("set_time", _set_time, "Sets the time of day in hours", {"time": "number"})
-		gs.register_command("save_game", _save_game, "Saves the game to a slot", {"slot": "string"})
+		gs.register_command("save_game", _save_game, "Saves the game to a slot or a file", {"slot": "string", "path": "string"})
 		gs.register_command("load_save", _load_save, "Loads a save by slot or path", {"slot": "string", "path": "string"})
 		gs.register_command("load_scene", _load_scene, "Loads a level by name: menu, flat or course", {"scene": "string"})
 		gs.register_command("crash_now", _crash_now, "Fault: crash the process", {"after_frames": "int"})
@@ -187,13 +187,18 @@ func _set_time(args: Dictionary) -> Variant:
 
 
 ## Saves what the game keeps: flags, inventory, the level, each interactable's state and the player's
-## position and health.
+## position and health. A slot goes under user://; a path (what `gscout fixture capture` gives) is written as is.
 func _save_game(args: Dictionary) -> Variant:
 	var slot := str(args.get("slot", ""))
-	if slot.is_empty() or not slot.is_valid_filename():
-		return "save_game needs a slot (a plain file name)"
-	if FileAccess.file_exists(SAVE_SLOT % slot):
-		return "%s is a bundled save fixture; save to another slot" % slot
+	var path := str(args.get("path", ""))
+	if path.is_empty():
+		if slot.is_empty() or not slot.is_valid_filename():
+			return "save_game needs a slot (a plain file name) or a path"
+		if FileAccess.file_exists(SAVE_SLOT % slot):
+			return "%s is a bundled save fixture; save to another slot" % slot
+		path = USER_SLOT % slot
+	elif path.begins_with("res://"):
+		return "save_game can't write into the project (res://); give a file path"
 	var saved_flags := flags.duplicate()
 	if not drop_flag_on_save.is_empty():
 		saved_flags.erase(drop_flag_on_save)
@@ -205,12 +210,12 @@ func _save_game(args: Dictionary) -> Variant:
 		var p := player().global_position
 		data.player_position = [p.x, p.y, p.z]
 		data.player_health = player().health
-	DirAccess.make_dir_recursive_absolute(USER_SLOT.get_base_dir())
-	var f := FileAccess.open(USER_SLOT % slot, FileAccess.WRITE)
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	var f := FileAccess.open(path, FileAccess.WRITE)
 	if f == null:
-		return "can't write %s: %s" % [USER_SLOT % slot, error_string(FileAccess.get_open_error())]
+		return "can't write %s: %s" % [path, error_string(FileAccess.get_open_error())]
 	f.store_string(JSON.stringify(data))
-	return {"saved": USER_SLOT % slot}
+	return {"saved": path}
 
 
 func _load_save(args: Dictionary) -> Variant:

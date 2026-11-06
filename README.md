@@ -64,11 +64,13 @@ func _give_item(args: Dictionary) -> Variant:
     return null                           # null or true: done; a Dictionary: done, sent back as the result
 ```
 
-The recommended standard set is `set_flag {name, value}`, `god_mode {enabled}`, `save_game {slot}`,
+The recommended standard set is `set_flag {name, value}`, `god_mode {enabled}`, `save_game {slot | path}`,
 `load_save {slot | path}`, `give_item {item, count}` and `set_time {time}`. Built in, and replaced by a registration of the same name:
 `teleport {position}`, `load_scene {scene}`, `set_seed {seed}`, `time_scale {scale}` and `scene_groups` (read-only:
 the node groups in the scene with their sizes). Unregister commands when
-the node that handles them leaves the tree.
+the node that handles them leaves the tree. `gscout fixture capture <name>` calls `save_game` with a `path` (a file
+under the game repository's `qa/fixtures/saves/`) and keeps the fixture only if `load_save` with that path brings
+the same state back in a fresh launch.
 
 With both `save_game` and `load_save` registered, Glitchscout checks saving on its own: it saves, reloads the
 scene, loads and compares what it observes before and after, and reports anything the save lost. Expose the
