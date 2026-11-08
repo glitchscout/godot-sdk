@@ -1,0 +1,85 @@
+[gd_scene load_steps=14 format=3]
+
+[ext_resource type="Script" path="res://vault.gd" id="vault"]
+[ext_resource type="Script" path="res://player.gd" id="player"]
+[ext_resource type="Script" path="res://key.gd" id="key"]
+[ext_resource type="Script" path="res://door.gd" id="door"]
+
+[sub_resource type="BoxShape3D" id="floor_shape"]
+size = Vector3(16, 1, 16)
+
+[sub_resource type="BoxMesh" id="floor_mesh"]
+size = Vector3(16, 1, 16)
+
+[sub_resource type="CapsuleShape3D" id="player_shape"]
+
+[sub_resource type="CapsuleMesh" id="player_mesh"]
+
+[sub_resource type="SphereShape3D" id="key_shape"]
+radius = 0.4
+
+[sub_resource type="BoxMesh" id="key_mesh"]
+size = Vector3(0.6, 0.3, 0.2)
+
+[sub_resource type="BoxShape3D" id="door_shape"]
+size = Vector3(3, 2.5, 0.4)
+
+[sub_resource type="BoxMesh" id="door_mesh"]
+size = Vector3(3, 2.5, 0.4)
+
+[sub_resource type="Environment" id="env"]
+background_mode = 1
+background_color = Color(0.12, 0.13, 0.16, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.5, 0.5, 0.55, 1)
+
+[node name="Vault" type="Node3D"]
+script = ExtResource("vault")
+
+[node name="Floor" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+
+[node name="Collision" type="CollisionShape3D" parent="Floor"]
+shape = SubResource("floor_shape")
+
+[node name="Mesh" type="MeshInstance3D" parent="Floor"]
+mesh = SubResource("floor_mesh")
+
+[node name="Player" type="CharacterBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 4)
+script = ExtResource("player")
+
+[node name="Collision" type="CollisionShape3D" parent="Player"]
+shape = SubResource("player_shape")
+
+[node name="Mesh" type="MeshInstance3D" parent="Player"]
+mesh = SubResource("player_mesh")
+
+[node name="Key" type="Area3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, 1)
+script = ExtResource("key")
+
+[node name="Collision" type="CollisionShape3D" parent="Key"]
+shape = SubResource("key_shape")
+
+[node name="Mesh" type="MeshInstance3D" parent="Key"]
+mesh = SubResource("key_mesh")
+
+[node name="Door" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.25, -4)
+script = ExtResource("door")
+
+[node name="Collision" type="CollisionShape3D" parent="Door"]
+shape = SubResource("door_shape")
+
+[node name="Mesh" type="MeshInstance3D" parent="Door"]
+mesh = SubResource("door_mesh")
+
+[node name="Camera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.766044, 0.642788, 0, -0.642788, 0.766044, 0, 9, 11)
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.5, 0.866025, 0, -0.866025, 0.5, 0, 10, 0)
+
+[node name="Environment" type="WorldEnvironment" parent="."]
+environment = SubResource("env")

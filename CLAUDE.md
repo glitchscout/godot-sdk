@@ -8,6 +8,9 @@ and the Godot fixture game. The repo root is a Godot project used for developmen
 - `scripts/test.sh` is the test loop: it installs the pinned GdUnit4 (`scripts/install_gdunit4.sh`), runs every
   suite in `tests/` headless and prints `GREEN p/t` or `RED p/t`, then validates every protocol message the SDK
   sent during the tests against the `github.com/glitchscout/protocol` schemas (`tools/schemacheck`).
+- `scripts/check_sample.sh` checks `samples/starter/` (the getting-started guide's sample, its own Godot project) the way a
+  user gets it: the addon copied in, imported, and run headless with no errors. The glitchscout repo's godot CI job runs
+  `gscout lint` and `gscout run` on it, and checks the guide shows its feature file as it is.
 - `tools/stepbench` (`go run .` from that directory) is the step-overhead benchmark CI gates on: the median STEP
   round trip (OBSERVE then STEP) on an empty scene must stay at or under 5 ms.
 - Godot comes from `$GODOT_BIN` or `godot` on PATH and must match `.godot-version`. Bump `.godot-version` and the

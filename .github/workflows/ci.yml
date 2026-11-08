@@ -34,6 +34,8 @@ jobs:
         run: scripts/install_godot.sh ~/godot
       - name: GdUnit4 suites and protocol schema check
         run: GODOT_BIN=~/godot/godot scripts/test.sh
+      - name: The starter sample imports and runs clean
+        run: GODOT_BIN=~/godot/godot scripts/check_sample.sh
       - name: schemacheck's own tests
         working-directory: tools/schemacheck
         run: go vet ./... && go test ./... && test -z "$(gofmt -l .)"

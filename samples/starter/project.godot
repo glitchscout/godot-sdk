@@ -1,0 +1,61 @@
+; Glitchscout starter: a small Godot 4 game to try Glitchscout on. Copy addons/glitchscout/ from the godot-sdk
+; repository into this folder first (see README.md).
+
+config_version=5
+
+[application]
+
+config/name="Glitchscout starter"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+run/main_scene="res://vault.tscn"
+
+[autoload]
+
+Glitchscout="*res://addons/glitchscout/glitchscout.gd"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/glitchscout/plugin.cfg")
+
+[glitchscout]
+
+; Movement as one 2D axis, in Input.get_vector order: negative x, positive x, negative y, positive y.
+axes={
+"move": ["move_left", "move_right", "move_forward", "move_back"]
+}
+; The game's own events, sent with Glitchscout.event().
+events=PackedStringArray("item_collected", "door_opened")
+physics/move_speed=5.0
+physics/jump_height=1.8
+
+[input]
+
+move_left={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"physical_keycode":65), Object(InputEventJoypadMotion,"axis":0,"axis_value":-1.0)]
+}
+move_right={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"physical_keycode":68), Object(InputEventJoypadMotion,"axis":0,"axis_value":1.0)]
+}
+move_forward={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"physical_keycode":87), Object(InputEventJoypadMotion,"axis":1,"axis_value":-1.0)]
+}
+move_back={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"physical_keycode":83), Object(InputEventJoypadMotion,"axis":1,"axis_value":1.0)]
+}
+jump={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"physical_keycode":32), Object(InputEventJoypadButton,"button_index":0)]
+}
+interact={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"physical_keycode":69), Object(InputEventJoypadButton,"button_index":2)]
+}
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
