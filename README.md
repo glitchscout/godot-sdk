@@ -22,6 +22,11 @@ Optional project settings:
 | `glitchscout/axes` | empty | Virtual 2D axes Glitchscout can drive with one analog input, `{name: [negative_x, positive_x, negative_y, positive_y]}` in `Input.get_vector` order, e.g. `{"move": ["move_left", "move_right", "move_forward", "move_back"]}` |
 | `glitchscout/step/method` | `hold` | How step mode makes the game wait between steps: `hold` blocks the main loop (nothing in the game runs or notices); `pause` pauses the scene tree instead, for games where blocking doesn't work |
 
+## Starter sample
+
+`samples/starter/` is a small game with the addon set up and two tests that pass, to try Glitchscout on before
+your own project. See its README.
+
 ## What Glitchscout sees
 
 Put nodes in these groups. Each may define `glitchscout_observe() -> Dictionary` to add fields; an `"id"` key

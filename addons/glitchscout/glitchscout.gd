@@ -263,29 +263,34 @@ func _on_state_ctrl(msg: Dictionary) -> void:
 		return
 	if _reset_handler.is_valid():
 		_reset_handler.call()
-	elif not _reload_current_scene_now():
-		reply_error(msg, "no_scene", "there is no current scene loaded from a file to reload; set a reset handler")
-		return
+	else:
+		var old := get_tree().current_scene
+		if old == null or old.scene_file_path.is_empty() or not change_scene_now(old.scene_file_path):
+			reply_error(msg, "no_scene", "there is no current scene loaded from a file to reload; set a reset handler")
+			return
 	reply(msg, "ACK", {"result": {"tick_frame": tick}})
 
 
-## Swaps the current scene for a fresh instance right away. reload_current_scene() waits for the end of the
-## frame, which a held game only reaches after the next STEP, so an OBSERVE after the ACK would see the old one.
-func _reload_current_scene_now() -> bool:
+## Swaps the current scene for a fresh instance of the scene at path right away, so the new scene's _ready has
+## run (and registered its commands) before this returns. change_scene_to_file() and reload_current_scene() wait
+## for the end of the frame, which a held game only reaches after the next STEP, so the commands and the OBSERVE
+## that follow would see the old scene, or none.
+func change_scene_now(path: String) -> bool:
 	var tree := get_tree()
-	var old := tree.current_scene
-	if old == null or old.scene_file_path.is_empty():
-		return false
-	var packed := load(old.scene_file_path) as PackedScene
+	var packed := load(path) as PackedScene
 	if packed == null:
 		return false
+	var old := tree.current_scene
 	var fresh := packed.instantiate()
-	var parent := old.get_parent()
-	var index := old.get_index()
-	parent.remove_child(old)
-	old.queue_free()
-	parent.add_child(fresh)
-	parent.move_child(fresh, index)
+	if old == null:
+		tree.root.add_child(fresh)
+	else:
+		var parent := old.get_parent()
+		var index := old.get_index()
+		parent.remove_child(old)
+		old.queue_free()
+		parent.add_child(fresh)
+		parent.move_child(fresh, index)
 	tree.current_scene = fresh
 	tree.scene_changed.emit()
 	return true

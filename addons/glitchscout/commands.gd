@@ -88,8 +88,7 @@ func _builtin_load_scene(args: Dictionary) -> Variant:
 	var scene := str(args.get("scene", ""))
 	if not scene.begins_with("res://") or not ResourceLoader.exists(scene, "PackedScene"):
 		return "no scene at '%s'" % scene
-	var err := sdk.get_tree().change_scene_to_file(scene)
-	return null if err == OK else "can't change to %s: %s" % [scene, error_string(err)]
+	return null if sdk.change_scene_now(scene) else "can't change to %s" % scene
 
 
 func _builtin_set_seed(args: Dictionary) -> Variant:

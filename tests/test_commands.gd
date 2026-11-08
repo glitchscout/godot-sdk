@@ -66,6 +66,28 @@ func test_builtin_teleport_set_seed_time_scale_and_load_scene() -> void:
 	assert_str((await _cmd("load_scene", {"scene": "res://no/such/scene.tscn"})).payload.code).is_equal("invalid_args")
 
 
+func test_builtin_load_scene_has_the_new_scene_in_place_before_the_ack() -> void:
+	# A held game reaches the end of the frame only after the next STEP, so a scene swapped there would still be
+	# missing for the setup commands that follow (a give_item the new level registers in _ready).
+	await _ready_sdk()
+	var tree := get_tree()
+	var runner := tree.current_scene
+	var old := Node3D.new()
+	tree.root.add_child(old)
+	tree.current_scene = old
+	sdk._commands.on_command({"id": "5c1e0c3a-2b4d-4e6f-8a9b-0c1d2e3f4a5b", "message_type": "COMMAND", "payload": {"name": "load_scene", "args": {"scene": "res://fixture/levels/flat.tscn"}}})
+	var now := tree.current_scene # read before any frame passes: what the next command sees
+	tree.current_scene = runner
+	assert_bool(now != old and is_instance_valid(now) and now.is_inside_tree()).is_true()
+	assert_str(now.scene_file_path).is_equal("res://fixture/levels/flat.tscn")
+	assert_bool(old.is_inside_tree()).is_false()
+	assert_bool(await pump_until(func(): return orch.messages("ACK").any(func(m): return m.reply_to == "5c1e0c3a-2b4d-4e6f-8a9b-0c1d2e3f4a5b"))).is_true()
+	if is_instance_valid(now) and now != old:
+		now.queue_free()
+	if is_instance_valid(old):
+		old.queue_free()
+
+
 func test_the_standard_set_works_on_the_fixture() -> void:
 	_start_game()
 	await _ready_sdk()
