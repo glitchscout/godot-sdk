@@ -4,14 +4,15 @@ A small Godot 4 game to try Glitchscout on: a player, a key and a locked door, w
 `qa/features/first_test.feature`. The [Get started](https://glitchscout.com/docs/getting-started/) guide walks
 through it.
 
-1. Copy `addons/glitchscout/` from the root of this repository into `samples/starter/addons/`.
-2. Open `samples/starter/project.godot` in Godot 4.7 once, so it imports.
-3. From `samples/starter/`:
+`gscout init --sample <dir>` writes this folder with the addon in `addons/glitchscout/`, ready to run. From it:
 
-   ```sh
-   gscout lint
-   gscout run --headless --no-model
-   ```
+```sh
+gscout lint
+gscout run --headless --no-model
+```
+
+In a clone of the godot-sdk repository the sample has no addon: copy `addons/glitchscout/` from the repository's
+root into `samples/starter/addons/` first.
 
 | File | What it shows |
 |---|---|

@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# Checks the starter sample the way a new user gets it: samples/starter copied out with addons/glitchscout
-# copied into it, imported, then its main scene run headless for 5 seconds of game time. Fails on any engine or
-# script error, or if the project isn't where the docs say. Godot comes from $GODOT_BIN, else `godot` on PATH.
+# Checks the starter sample the way `gscout init --sample` writes it: samples/starter copied out with
+# addons/glitchscout copied into it, imported, then its main scene run headless for 5 seconds of game time. Fails
+# on any engine or script error, or if the project isn't where the docs say. Godot comes from $GODOT_BIN, else
+# `godot` on PATH.
 # Prints the assembled project's path; KEEP=1 leaves it in place.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 GODOT="${GODOT_BIN:-$(command -v godot || true)}"
 [[ -x "$GODOT" ]] || { echo "COULD NOT RUN: Godot not found (set GODOT_BIN)"; exit 2; }
 [[ -f samples/starter/project.godot ]] || { echo "FAIL: samples/starter/project.godot is missing"; exit 1; }
-[[ -z "$(git ls-files samples/starter/addons)" ]] || { echo "FAIL: samples/starter ships its own addons/; the docs copy the addon in"; exit 1; }
+[[ -z "$(git ls-files samples/starter/addons)" ]] || { echo "FAIL: samples/starter ships its own addons/; gscout init --sample writes the addon in"; exit 1; }
 
 dir="$(mktemp -d)/starter"
 cp -R samples/starter "$dir"

@@ -36,6 +36,8 @@ jobs:
         run: GODOT_BIN=~/godot/godot scripts/test.sh
       - name: The starter sample imports and runs clean
         run: GODOT_BIN=~/godot/godot scripts/check_sample.sh
+      - name: The Go package that carries the addon and the sample
+        run: go vet . && go test . && test -z "$(gofmt -l ./*.go)"
       - name: schemacheck's own tests
         working-directory: tools/schemacheck
         run: go vet ./... && go test ./... && test -z "$(gofmt -l .)"
