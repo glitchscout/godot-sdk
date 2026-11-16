@@ -10,7 +10,7 @@ through it.
 
    ```sh
    gscout lint
-   gscout run --godot /path/to/godot --project . --headless --no-model
+   gscout run --headless --no-model
    ```
 
 | File | What it shows |
