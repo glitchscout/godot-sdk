@@ -11,8 +11,9 @@ extends RefCounted
 ## back as result.value) or a String (refused with that message as invalid_args).
 ##
 ## Built-ins, which a game registration of the same name replaces: load_scene {scene}, set_seed {seed},
-## time_scale {scale}, teleport {position} (moves the player and stops it) and scene_groups (the node groups
-## in the tree with their sizes, read-only, so gscout doctor can suggest groups to mark).
+## time_scale {scale}, teleport {position} (moves the player and stops it), scene_groups (the node groups
+## in the tree with their sizes) and player_candidates (the nodes that look like the player). The last two
+## are read-only: gscout doctor uses them to suggest what to mark, and nothing is marked by guessing.
 
 const Observation := preload("observe.gd")
 const BUILTINS := {
@@ -21,7 +22,9 @@ const BUILTINS := {
 	"time_scale": {"description": "Sets Engine.time_scale", "params": {"scale": "number"}},
 	"teleport": {"description": "Moves the player to a position", "params": {"position": "vec3"}},
 	"scene_groups": {"description": "Lists the node groups in the scene with their sizes"},
+	"player_candidates": {"description": "Lists the nodes that look like the player, likeliest first"},
 }
+const MAX_PLAYER_CANDIDATES := 20
 
 static var _registry := {} ## name -> {handler, description, params}
 
@@ -121,6 +124,32 @@ func _builtin_scene_groups(_args: Dictionary) -> Variant:
 	var names := counts.keys()
 	names.sort()
 	return {"groups": names.map(func(n): return {"name": n, "count": counts[n]})}
+
+
+## The nodes a game would most likely put in the "player" group: 2D and 3D nodes called "player" (in the node's
+## name or its script's path), then CharacterBody nodes, in tree order within each. Engine nodes that only have
+## "player" in their class (AudioStreamPlayer2D) aren't candidates. Each is {path, class, script?}.
+func _builtin_player_candidates(_args: Dictionary) -> Variant:
+	var ranked := [[], [], []] # called player and a body, called player, a body
+	var pending: Array[Node] = [sdk.get_tree().root]
+	while not pending.is_empty():
+		var node: Node = pending.pop_back()
+		var children := node.get_children()
+		children.reverse() # so the stack gives them back in tree order
+		pending.append_array(children)
+		if not (node is Node2D or node is Node3D) or node.get_class().containsn("player"):
+			continue
+		var script: Script = node.get_script()
+		var script_path := script.resource_path if script else ""
+		var named := str(node.name).containsn("player") or script_path.containsn("player")
+		var body := node is CharacterBody2D or node is CharacterBody3D
+		if not (named or body):
+			continue
+		var candidate := {"path": str(node.get_path()), "class": node.get_class()}
+		if not script_path.is_empty():
+			candidate.script = script_path
+		ranked[0 if named and body else 1 if named else 2].append(candidate)
+	return {"candidates": (ranked[0] + ranked[1] + ranked[2]).slice(0, MAX_PLAYER_CANDIDATES)}
 
 
 func _builtin_teleport(args: Dictionary) -> Variant:

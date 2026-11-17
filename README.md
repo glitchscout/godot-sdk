@@ -51,7 +51,9 @@ overrides the node path as its identifier. Glitchscout computes distances from t
 A node that isn't a `Node2D` or `Node3D` (a game manager, say) has no position, so no radius leaves it out.
 
 Nothing is marked by guessing: `gscout doctor` lists groups whose names look like pickups, crates or hazards,
-and you decide whether to add them.
+and you decide whether to add them. With no node in the `player` group, it also names the nodes that look like
+the player: 2D and 3D nodes with "player" in their name or script path, and `CharacterBody2D` and
+`CharacterBody3D` nodes.
 
 After an interaction (a press of an action an interactable requires, `interact` or `ui_accept`), interactables
 and observables whose `state`, `enabled` or `collision` then changes are reported at any distance for
@@ -62,7 +64,7 @@ The current camera is reported too: position, yaw and pitch, and `mode` from `gl
 
 ## Debug commands
 
-Glitchscout sets up tests with debug commands, and runs only the ones you register (plus five built-ins):
+Glitchscout sets up tests with debug commands, and runs only the ones you register (plus six built-ins):
 
 ```gdscript
 var gs := get_node_or_null("/root/Glitchscout")  # null in a build without the addon
@@ -78,8 +80,9 @@ func _give_item(args: Dictionary) -> Variant:
 
 The recommended standard set is `set_flag {name, value}`, `god_mode {enabled}`, `save_game {slot | path}`,
 `load_save {slot | path}`, `give_item {item, count}` and `set_time {time}`. Built in, and replaced by a registration of the same name:
-`teleport {position}`, `load_scene {scene}`, `set_seed {seed}`, `time_scale {scale}` and `scene_groups` (read-only:
-the node groups in the scene with their sizes). Unregister commands when
+`teleport {position}`, `load_scene {scene}`, `set_seed {seed}`, `time_scale {scale}`, `scene_groups` (read-only:
+the node groups in the scene with their sizes) and `player_candidates` (read-only: the nodes that look like the
+player, each with its node path, class and script). Unregister commands when
 the node that handles them leaves the tree. `gscout fixture capture <name>` calls `save_game` with a `path` (a file
 under the game repository's `qa/fixtures/saves/`) and keeps the fixture only if `load_save` with that path brings
 the same state back in a fresh launch.

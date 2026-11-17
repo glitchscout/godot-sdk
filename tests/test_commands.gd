@@ -139,6 +139,80 @@ func test_handler_results_are_made_json_safe() -> void:
 	assert_that(m.payload.result.value.hp).is_null()
 
 
+## A node with a script at a path (no file behind it), for what player_candidates reads from script paths.
+func _scripted(node: Node, path: String) -> Node:
+	var script := GDScript.new()
+	script.source_code = "extends %s\n" % node.get_class()
+	script.reload()
+	script.take_over_path(path)
+	node.set_script(script)
+	return node
+
+
+func _named(node: Node, name: String, parent: Node) -> Node:
+	node.name = name
+	parent.add_child(node)
+	return node
+
+
+## The candidates under a node, in the order the command gave them.
+func _candidates_under(parent: Node) -> Array:
+	var m := await _cmd("player_candidates")
+	assert_str(m.message_type).is_equal("ACK")
+	var prefix := str(parent.get_path()) + "/"
+	return m.payload.result.value.candidates.filter(func(c): return str(c.path).begins_with(prefix))
+
+
+func test_player_candidates_lists_bodies_and_nodes_called_player_likeliest_first() -> void:
+	var world: Node = auto_free(Node2D.new())
+	_named(world, "World", self)
+	var hero := _named(_scripted(CharacterBody2D.new(), "res://tests/tmp/hero.gd"), "Hero", world)
+	var enemy := _named(CharacterBody3D.new(), "Enemy", world)
+	var avatar := _named(_scripted(Node2D.new(), "res://tests/tmp/player_avatar.gd"), "Avatar", world)
+	var player := _named(CharacterBody2D.new(), "Player", world)
+	var spawn := _named(Marker2D.new(), "PlayerSpawn", world)
+	_named(RigidBody2D.new(), "Crate", world)
+	# "player" only in an engine class name, or on a node with no place in the world, isn't a candidate.
+	_named(AnimationPlayer.new(), "AnimationPlayer", world)
+	_named(AudioStreamPlayer2D.new(), "PlayerFootsteps", world)
+	_named(Control.new(), "PlayerHud", world)
+	start_sdk()
+	var hello := await handshake()
+	assert_array(hello.payload.manifest.commands.map(func(c): return c.name)).contains(["player_candidates"])
+	var found := await _candidates_under(world)
+	assert_array(found.map(func(c): return c.path)).is_equal(
+		[player, avatar, spawn, hero, enemy].map(func(n): return str(n.get_path())))
+	assert_dict(found[0]).is_equal({"path": str(player.get_path()), "class": "CharacterBody2D"})
+	assert_dict(found[1]).is_equal({"path": str(avatar.get_path()), "class": "Node2D", "script": "res://tests/tmp/player_avatar.gd"})
+	assert_dict(found[3]).is_equal({"path": str(hero.get_path()), "class": "CharacterBody2D", "script": "res://tests/tmp/hero.gd"})
+	assert_dict(found[4]).is_equal({"path": str(enemy.get_path()), "class": "CharacterBody3D"})
+
+
+func test_player_candidates_marks_nothing_and_leaves_the_addon_out() -> void:
+	var world: Node = auto_free(Node2D.new())
+	_named(world, "World", self)
+	var player := _named(CharacterBody2D.new(), "Player", world)
+	await _ready_sdk()
+	var m := await _cmd("player_candidates")
+	assert_array(m.payload.result.value.candidates.map(func(c): return c.path)).contains([str(player.get_path())])
+	assert_array(m.payload.result.value.candidates.filter(func(c): return str(c.get("script", "")).begins_with("res://addons/glitchscout/"))).is_empty()
+	assert_array(player.get_groups()).is_empty()
+	assert_array(get_tree().get_nodes_in_group("player")).is_empty()
+
+
+func test_player_candidates_keeps_the_likeliest_of_a_crowd() -> void:
+	var world: Node = auto_free(Node2D.new())
+	_named(world, "World", self)
+	for i in 30:
+		_named(CharacterBody2D.new(), "Enemy%d" % i, world)
+	var player := _named(Node2D.new(), "player", world)
+	await _ready_sdk()
+	var m := await _cmd("player_candidates")
+	var all: Array = m.payload.result.value.candidates
+	assert_int(all.size()).is_equal(20)
+	assert_str(all[0].path).is_equal(str(player.get_path()))
+
+
 func test_time_scale_is_refused_in_step_mode() -> void:
 	# Called directly: a live step-mode session would hold the main loop, and this main-thread mock with it.
 	var s := auto_free(GlitchscoutSDK.new()) as GlitchscoutSDK
