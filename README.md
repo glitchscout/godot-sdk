@@ -5,8 +5,14 @@ navigation queries and screenshots. Compiled out of release builds.
 
 ## Install
 
-Copy `addons/glitchscout/` into your project and enable **Glitchscout** under Project → Project Settings →
-Plugins. That registers the `Glitchscout` autoload. It does nothing unless Glitchscout launches the game with
+Run `gscout init` in your Godot project. It puts this addon at `addons/glitchscout/`, turns the plugin and its
+`Glitchscout` autoload on in `project.godot`, creates `qa/features/` and adds `.glitchscout/` to `.gitignore`. It
+says what it changed and writes over nothing that's there.
+
+By hand, it's the same thing: copy `addons/glitchscout/` into your project and enable **Glitchscout** under
+Project → Project Settings → Plugins. That registers the `Glitchscout` autoload.
+
+The addon does nothing unless Glitchscout launches the game with
 `-- --glitchscout-endpoint=… --glitchscout-token=…`, and only in a debug build or one exported with the `qa`
 feature tag.
 
@@ -25,7 +31,8 @@ Optional project settings:
 ## Starter sample
 
 `samples/starter/` is a small game with the addon set up and two tests that pass, to try Glitchscout on before
-your own project. See its README.
+your own project. `gscout init --sample <dir>` writes it, with the addon in place, wherever you like. See its
+README.
 
 ## What Glitchscout sees
 

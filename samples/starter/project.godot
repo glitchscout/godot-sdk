@@ -1,5 +1,5 @@
-; Glitchscout starter: a small Godot 4 game to try Glitchscout on. Copy addons/glitchscout/ from the godot-sdk
-; repository into this folder first (see README.md).
+; Glitchscout starter: a small Godot 4 game to try Glitchscout on. `gscout init --sample <dir>` writes it with the
+; addon in place; in the godot-sdk repository it has none (see README.md).
 
 config_version=5
 
