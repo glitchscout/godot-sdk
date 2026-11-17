@@ -200,6 +200,19 @@ func test_player_candidates_marks_nothing_and_leaves_the_addon_out() -> void:
 	assert_array(get_tree().get_nodes_in_group("player")).is_empty()
 
 
+## "multiplayer" has "player" in it and says nothing about which node the player is.
+func test_player_candidates_does_not_read_multiplayer_as_player() -> void:
+	var world: Node = auto_free(Node2D.new())
+	_named(world, "World", self)
+	_named(_scripted(Node2D.new(), "res://tests/tmp/multiplayer/lobby.gd"), "Lobby", world)
+	_named(Node2D.new(), "MultiplayerSync", world)
+	var enemy := _named(_scripted(CharacterBody2D.new(), "res://tests/tmp/multiplayer/enemy.gd"), "Enemy", world)
+	var player := _named(_scripted(Node2D.new(), "res://tests/tmp/multiplayer/player.gd"), "Avatar", world)
+	await _ready_sdk()
+	var found := await _candidates_under(world)
+	assert_array(found.map(func(c): return c.path)).is_equal([str(player.get_path()), str(enemy.get_path())])
+
+
 func test_player_candidates_keeps_the_likeliest_of_a_crowd() -> void:
 	var world: Node = auto_free(Node2D.new())
 	_named(world, "World", self)

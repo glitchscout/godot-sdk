@@ -127,8 +127,9 @@ func _builtin_scene_groups(_args: Dictionary) -> Variant:
 
 
 ## The nodes a game would most likely put in the "player" group: 2D and 3D nodes called "player" (in the node's
-## name or its script's path), then CharacterBody nodes, in tree order within each. Engine nodes that only have
-## "player" in their class (AudioStreamPlayer2D) aren't candidates. Each is {path, class, script?}.
+## name or its script's path, "multiplayer" aside), then CharacterBody nodes, in tree order within each. Engine nodes
+## that only have "player" in their class (AudioStreamPlayer2D) aren't candidates. Each is {path, class, script?}, and
+## the list stops at MAX_PLAYER_CANDIDATES.
 func _builtin_player_candidates(_args: Dictionary) -> Variant:
 	var ranked := [[], [], []] # called player and a body, called player, a body
 	var pending: Array[Node] = [sdk.get_tree().root]
@@ -141,7 +142,7 @@ func _builtin_player_candidates(_args: Dictionary) -> Variant:
 			continue
 		var script: Script = node.get_script()
 		var script_path := script.resource_path if script else ""
-		var named := str(node.name).containsn("player") or script_path.containsn("player")
+		var named := _says_player(str(node.name)) or _says_player(script_path)
 		var body := node is CharacterBody2D or node is CharacterBody3D
 		if not (named or body):
 			continue
@@ -150,6 +151,11 @@ func _builtin_player_candidates(_args: Dictionary) -> Variant:
 			candidate.script = script_path
 		ranked[0 if named and body else 1 if named else 2].append(candidate)
 	return {"candidates": (ranked[0] + ranked[1] + ranked[2]).slice(0, MAX_PLAYER_CANDIDATES)}
+
+
+## Whether a node name or script path has "player" in it, other than as part of "multiplayer".
+static func _says_player(text: String) -> bool:
+	return text.to_lower().replace("multiplayer", "").contains("player")
 
 
 func _builtin_teleport(args: Dictionary) -> Variant:
