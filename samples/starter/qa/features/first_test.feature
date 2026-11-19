@@ -11,6 +11,6 @@ Feature: The vault
   Scenario: The key opens the door
     Given the player is in scene "res://vault.tscn"
     And the player has "vault_key"
-    And the player is at 0, 1, -2
+    And the player is at "vault_door"
     When the player presses "interact"
     Then "vault_door" should be "open" within 2 seconds

@@ -333,6 +333,16 @@ func all_entities() -> Array:
 	return _observation.all_entities()
 
 
+## The observable entity with this id as {node, info}, or {} for none.
+func entity_named(id: String) -> Dictionary:
+	return _observation.entity_named(id)
+
+
+## Whether a point is on the navigation mesh or grid. True when there is none to ask.
+func is_walkable(pos: Vector3) -> bool:
+	return _queries.is_walkable(pos)
+
+
 ## The UI elements currently in the tree (observation's ui_elements).
 func ui_elements() -> Array:
 	return _ui.elements()

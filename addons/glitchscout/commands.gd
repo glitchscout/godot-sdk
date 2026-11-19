@@ -11,16 +11,18 @@ extends RefCounted
 ## back as result.value) or a String (refused with that message as invalid_args).
 ##
 ## Built-ins, which a game registration of the same name replaces: load_scene {scene}, set_seed {seed},
-## time_scale {scale}, teleport {position} (moves the player and stops it), scene_groups (the node groups
-## in the tree with their sizes) and player_candidates (the nodes that look like the player). The last two
-## are read-only: gscout doctor uses them to suggest what to mark, and nothing is marked by guessing.
+## time_scale {scale}, teleport {position} or {to} (moves the player and stops it; `to` names an entity to stand in
+## reach of, or a marker to stand at: see placement.gd), scene_groups (the node groups in the tree with their sizes)
+## and player_candidates (the nodes that look like the player). The last two are read-only: gscout doctor uses them
+## to suggest what to mark, and nothing is marked by guessing.
 
 const Observation := preload("observe.gd")
+const Placement := preload("placement.gd")
 const BUILTINS := {
 	"load_scene": {"description": "Changes to a scene (res:// path)", "params": {"scene": "string"}},
 	"set_seed": {"description": "Seeds the global random number generator", "params": {"seed": "int"}},
 	"time_scale": {"description": "Sets Engine.time_scale", "params": {"scale": "number"}},
-	"teleport": {"description": "Moves the player to a position", "params": {"position": "vec3"}},
+	"teleport": {"description": "Moves the player to a position, or to stand by a named entity or at a named marker", "params": {"position": "vec3", "to": "string"}},
 	"scene_groups": {"description": "Lists the node groups in the scene with their sizes"},
 	"player_candidates": {"description": "Lists the nodes that look like the player, likeliest first"},
 }
@@ -160,19 +162,26 @@ static func _says_player(text: String) -> bool:
 
 func _builtin_teleport(args: Dictionary) -> Variant:
 	var pos: Variant = args.get("position")
-	if not pos is Dictionary:
-		return "teleport needs a position"
+	if not (pos is Dictionary or args.has("to")):
+		return "teleport needs a position, or the name of an entity or marker in 'to'"
 	var players := sdk.get_tree().get_nodes_in_group("player")
 	if players.is_empty():
 		return "there is no player (group 'player') to teleport"
 	var p: Node = players[0]
-	var v := Vector3(float(pos.get("x", 0)), float(pos.get("y", 0)), float(pos.get("z", 0)))
+	if not (p is Node3D or p is Node2D):
+		return "the player isn't a Node2D or Node3D"
+	var v: Vector3
+	if args.has("to"):
+		var found: Variant = Placement.new(sdk).spot(str(args.to), p)
+		if found is String:
+			return found
+		v = found
+	else:
+		v = Vector3(float(pos.get("x", 0)), float(pos.get("y", 0)), float(pos.get("z", 0)))
 	if p is Node3D:
 		p.global_position = v
-	elif p is Node2D:
-		p.global_position = Vector2(v.x, v.y)
 	else:
-		return "the player isn't a Node2D or Node3D"
+		p.global_position = Vector2(v.x, v.y)
 	if "velocity" in p:
 		p.velocity = Vector3.ZERO if p is Node3D else Vector2.ZERO
 	if "linear_velocity" in p:

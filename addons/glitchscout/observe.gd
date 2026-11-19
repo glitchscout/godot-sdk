@@ -306,6 +306,16 @@ func all_entities() -> Array:
 	return out
 
 
+## The observable entity with this id as {node, info} (info is its glitchscout_observe()), or {} for none.
+func entity_named(id: String) -> Dictionary:
+	for section in GROUPS:
+		for node in sdk.get_tree().get_nodes_in_group(GROUPS[section]):
+			var info := _info(node)
+			if _id(node, info) == id:
+				return {"node": node, "info": info}
+	return {}
+
+
 func _player_node() -> Node:
 	var players := sdk.get_tree().get_nodes_in_group("player")
 	return players[0] if not players.is_empty() else null
