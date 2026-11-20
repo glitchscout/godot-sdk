@@ -81,6 +81,27 @@ func _map2d() -> RID:
 	return sdk.get_viewport().world_2d.navigation_map
 
 
+## Whether a point is on the navigation mesh (within REACH_TOLERANCE on the ground, and in 3D within REACH_HEIGHT above
+## or below it) or in a free cell of the grid. True when there is no map to ask, or it hasn't synchronised yet, as in
+## the frame a scene loads.
+func is_walkable(pos: Vector3) -> bool:
+	match _mode():
+		"3d":
+			if NavigationServer3D.map_get_iteration_id(_map3d()) == 0:
+				return true
+			var c := NavigationServer3D.map_get_closest_point(_map3d(), pos)
+			return Vector2(c.x, c.z).distance_to(Vector2(pos.x, pos.z)) <= REACH_TOLERANCE and absf(c.y - pos.y) <= REACH_HEIGHT
+		"2d":
+			if NavigationServer2D.map_get_iteration_id(_map2d()) == 0:
+				return true
+			var at := Vector2(pos.x, pos.y)
+			return NavigationServer2D.map_get_closest_point(_map2d(), at).distance_to(at) <= REACH_TOLERANCE
+	if grid != null:
+		var cell := _cell(pos)
+		return grid.is_in_boundsv(cell) and not grid.is_point_solid(cell)
+	return true
+
+
 ## {points: Array[Vector3], links: Array (owner Object or null, per point)} or an error.
 func _path(from: Vector3, to: Vector3) -> Dictionary:
 	match _mode():

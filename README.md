@@ -62,6 +62,23 @@ and observables whose `state`, `enabled` or `collision` then changes are reporte
 The current camera is reported too: position, yaw and pitch, and `mode` from `glitchscout/camera_mode` (default
 `third_person`) or the camera's own `glitchscout_observe()`.
 
+## Named places
+
+A scenario can start the player somewhere by name, `Given the player is at "vault_door"`, with no coordinates
+to read out of the editor. The name is an entity's id or a marker's.
+
+- **An entity.** The player is put in reach of it (its `interaction_range`, else 2 metres) and not on top of it,
+  on the side the player is already on when that works. The spot is on the ground, on the navigation mesh or
+  grid if there is one, where the player's collision shapes have room and nothing stands between the two. A
+  hazard's `radius` is kept out of.
+- **A marker.** For a place with nothing in it to name, add a `Marker3D` or `Marker2D` to the group
+  `glitchscout_marker`. Its name is the node's name, or its `glitchscout_id` metadata. In 3D the player is put
+  on the ground under the marker, so it can sit on the floor or at any height above it; in 2D, or with no ground
+  there, the player is put exactly at it.
+
+A marker named after an entity says where to stand for that entity, for when the spot Glitchscout picks isn't the
+one you want. List your markers under `markers:` in `qa/game.yaml` and `gscout lint` checks the names scenarios use.
+
 ## Debug commands
 
 Glitchscout sets up tests with debug commands, and runs only the ones you register (plus six built-ins):
@@ -80,7 +97,7 @@ func _give_item(args: Dictionary) -> Variant:
 
 The recommended standard set is `set_flag {name, value}`, `god_mode {enabled}`, `save_game {slot | path}`,
 `load_save {slot | path}`, `give_item {item, count}` and `set_time {time}`. Built in, and replaced by a registration of the same name:
-`teleport {position}`, `load_scene {scene}`, `set_seed {seed}`, `time_scale {scale}`, `scene_groups` (read-only:
+`teleport {position}` or `{to}` (see [Named places](#named-places)), `load_scene {scene}`, `set_seed {seed}`, `time_scale {scale}`, `scene_groups` (read-only:
 the node groups in the scene with their sizes) and `player_candidates` (read-only: the nodes that look like the
 player, each with its node path, class and script). Unregister commands when
 the node that handles them leaves the tree. `gscout fixture capture <name>` calls `save_game` with a `path` (a file
