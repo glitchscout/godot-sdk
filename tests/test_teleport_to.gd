@@ -227,3 +227,28 @@ func test_the_player_is_put_on_ground_when_some_spots_have_none() -> void:
 	var p: Vector3 = game.player().global_position
 	assert_float(maxf(absf(p.x - 200), absf(p.z))).override_failure_message("player at %s is off the island" % p).is_less(1.0)
 	assert_float(p.y).override_failure_message("player at %s is not standing on the island" % p).is_between(1.45, 1.7)
+
+
+## A thing that gives no interaction_range is stood 2 metres' reach from, and a 2D game's metre is 32 pixels unless
+## glitchscout/physics/units_per_meter says otherwise: 2 pixels would put the player on top of it.
+func test_a_thing_with_no_range_gets_one_in_the_games_own_units() -> void:
+	start_sdk()
+	await handshake()
+	var player := CharacterBody2D.new()
+	player.add_to_group("player")
+	add_child(player)
+	player.global_position = Vector2(100, 400)
+	var boss := Node2D.new()
+	boss.add_to_group("glitchscout_threat")
+	boss.set_script(_observed({"id": "boss"}))
+	add_child(boss)
+	boss.global_position = Vector2(500, 400)
+	_extra.append_array([player, boss])
+	assert_str((await _cmd("teleport", {"to": "boss"})).message_type).is_equal("ACK")
+	var d := player.global_position.distance_to(boss.global_position)
+	assert_float(d).override_failure_message("player at %s, %s from the boss" % [player.global_position, d]).is_between(32.0, 64.0)
+	ProjectSettings.set_setting("glitchscout/physics/units_per_meter", 100.0)
+	assert_str((await _cmd("teleport", {"to": "boss"})).message_type).is_equal("ACK")
+	ProjectSettings.set_setting("glitchscout/physics/units_per_meter", null)
+	d = player.global_position.distance_to(boss.global_position)
+	assert_float(d).override_failure_message("player at %s, %s from the boss" % [player.global_position, d]).is_between(100.0, 200.0)

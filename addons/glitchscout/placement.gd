@@ -5,20 +5,21 @@ extends RefCounted
 ## glitchscout_id metadata, else its node name. The player is put there; in 3D, on the ground under it when there is
 ## any. A marker with an entity's name says where to stand for that entity.
 ##
-## An entity gets a spot in reach of it (its interaction_range, else DEFAULT_REACH) and not on top of it: STANDOFFS
-## of the reach away, on the side the player is on if that works, else turned around the entity. Spots on the entity
-## itself, or off the navigation mesh or grid when there is one, are left out. Of the rest, the best has ground under
-## it (3D), room for the player's collision shapes, and nothing between it and the entity, in that order of weight.
-## A hazard's radius is kept out of.
+## An entity gets a spot in reach of it (its interaction_range, else DEFAULT_REACH metres) and not on top of it:
+## STANDOFFS of the reach away, on the side the player is on if that works, else turned around the entity. Spots on
+## the entity itself, or off the navigation mesh or grid when there is one, are left out. Of the rest, the best has
+## ground under it (3D), room for the player's collision shapes, and nothing between it and the entity, in that order
+## of weight. A hazard's radius is kept out of.
 ##
 ## Physics answers in the frame a scene loads; the navigation map doesn't until it has synchronised, and isn't asked
 ## before then.
 
 const MARKER_GROUP := "glitchscout_marker"
-const DEFAULT_REACH := 2.0
+const DEFAULT_REACH := 2.0 ## metres
 const STANDOFFS: Array[float] = [0.6, 0.3]
 const TURNS: Array[float] = [0.0, 45.0, -45.0, 90.0, -90.0, 135.0, -135.0, 180.0]
-const HAZARD_MARGIN := 0.5 ## how far outside a hazard's radius to stand
+const HAZARD_MARGIN := 0.5 ## how far outside a hazard's radius to stand, in metres
+const UNITS_PER_METER_2D := 32.0 ## what a 2D game's metre is taken to be when it doesn't say (a 3D game's is 1 unit)
 const GROUND_PROBE := 4.0 ## how far under a spot the ground is looked for
 const GROUND_HEADROOM := 0.5 ## and how far above it the look starts
 const GROUND_CLEARANCE := 0.02 ## the player is put this much above where it stands, not in the floor
@@ -44,14 +45,15 @@ func spot(name: String, player: Node) -> Variant:
 	if not (entity.node is Node3D or entity.node is Node2D):
 		return "'%s' is nowhere to stand by: it isn't a Node2D or Node3D" % name
 	var target := _position(entity.node)
+	var metre := _metre(three_d)
 	var reach := _number(entity.info.get("interaction_range"))
 	if reach <= 0.0:
-		reach = DEFAULT_REACH
+		reach = DEFAULT_REACH * metre
 	var keep_out := 0.0
 	var radius := _number(entity.info.get("radius"))
 	if radius > 0.0:
-		keep_out = radius + HAZARD_MARGIN
-		reach = maxf(reach, keep_out + HAZARD_MARGIN)
+		keep_out = radius + HAZARD_MARGIN * metre
+		reach = maxf(reach, keep_out + HAZARD_MARGIN * metre)
 	var toward := _flat(_position(player) - target, three_d)
 	if toward.is_zero_approx():
 		toward = Vector3.BACK if three_d else Vector3.RIGHT
@@ -75,6 +77,14 @@ func spot(name: String, player: Node) -> Variant:
 	if best != null:
 		return best
 	return "found nowhere to stand in reach of '%s': add a marker called '%s' (group '%s') where the player should stand" % [name, name, MARKER_GROUP]
+
+
+## A metre in the game's units: glitchscout/physics/units_per_meter, else 1 in 3D and UNITS_PER_METER_2D in 2D.
+func _metre(three_d: bool) -> float:
+	var set := _number(ProjectSettings.get_setting("glitchscout/physics/units_per_meter", 0.0))
+	if set > 0.0:
+		return set
+	return 1.0 if three_d else UNITS_PER_METER_2D
 
 
 func _marker(name: String) -> Node:

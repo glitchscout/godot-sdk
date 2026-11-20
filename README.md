@@ -67,7 +67,7 @@ The current camera is reported too: position, yaw and pitch, and `mode` from `gl
 A scenario can start the player somewhere by name, `Given the player is at "vault_door"`, with no coordinates
 to read out of the editor. The name is an entity's id or a marker's.
 
-- **An entity.** The player is put in reach of it (its `interaction_range`, else 2 units) and not on top of it,
+- **An entity.** The player is put in reach of it (its `interaction_range`, else 2 metres) and not on top of it,
   on the side the player is already on when that works. The spot is on the ground, on the navigation mesh or
   grid if there is one, where the player's collision shapes have room and nothing stands between the two. A
   hazard's `radius` is kept out of.
