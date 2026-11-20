@@ -252,3 +252,62 @@ func test_a_thing_with_no_range_gets_one_in_the_games_own_units() -> void:
 	ProjectSettings.set_setting("glitchscout/physics/units_per_meter", null)
 	d = player.global_position.distance_to(boss.global_position)
 	assert_float(d).override_failure_message("player at %s, %s from the boss" % [player.global_position, d]).is_between(100.0, 200.0)
+
+
+## A 3D game whose unit isn't a metre has its ground looked for, and its reach given, in its own units.
+func test_a_3d_game_in_centimetres_is_measured_in_centimetres() -> void:
+	start_sdk()
+	await handshake()
+	ProjectSettings.set_setting("glitchscout/physics/units_per_meter", 100.0)
+	var world := Node3D.new()
+	add_child(world)
+	_extra.append(world)
+	var floor_body := StaticBody3D.new()
+	var floor_shape := CollisionShape3D.new()
+	floor_shape.shape = BoxShape3D.new()
+	floor_shape.shape.size = Vector3(4000, 100, 4000)
+	floor_body.add_child(floor_shape)
+	floor_body.position = Vector3(0, -50, 0)
+	world.add_child(floor_body)
+	var player := CharacterBody3D.new()
+	var body := CollisionShape3D.new()
+	body.shape = CapsuleShape3D.new()
+	body.shape.radius = 40.0
+	body.shape.height = 180.0
+	player.add_child(body)
+	player.add_to_group("player")
+	player.position = Vector3(0, 90, 0)
+	world.add_child(player)
+	var statue := Node3D.new()
+	statue.add_to_group("glitchscout_observable")
+	statue.set_script(_observed3d({"id": "statue"}))
+	statue.position = Vector3(1000, 150, 0) # its middle is 150 cm up, more than 4 units above the floor
+	world.add_child(statue)
+	await get_tree().physics_frame
+	var reply := await _cmd("teleport", {"to": "statue"})
+	ProjectSettings.set_setting("glitchscout/physics/units_per_meter", null)
+	assert_str(reply.message_type).is_equal("ACK")
+	var p := player.global_position
+	assert_float(Vector2(p.x, p.z).distance_to(Vector2(1000, 0))).override_failure_message("player at %s" % p).is_between(100.0, 200.0)
+	assert_float(p.y).override_failure_message("player at %s is not standing on the floor" % p).is_between(88.0, 95.0)
+
+
+## A hazard is stood beside, outside its radius.
+func test_the_player_is_kept_out_of_a_hazards_radius() -> void:
+	await _start("flat")
+	var lava := Node3D.new()
+	lava.add_to_group("glitchscout_hazard")
+	lava.set_script(_observed3d({"id": "lava", "radius": 3.0}))
+	lava.position = Vector3(10, 0, 0)
+	game.add_child(lava)
+	_extra.append(lava)
+	assert_str((await _cmd("teleport", {"to": "lava"})).message_type).is_equal("ACK")
+	var p: Vector3 = game.player().global_position
+	assert_float(Vector2(p.x, p.z).distance_to(Vector2(10, 0))).override_failure_message("player at %s" % p).is_between(3.4, 4.1)
+
+
+func _observed3d(info: Dictionary) -> GDScript:
+	var s := GDScript.new()
+	s.source_code = "extends Node3D\nfunc glitchscout_observe() -> Dictionary:\n\treturn %s\n" % var_to_str(info)
+	s.reload()
+	return s
