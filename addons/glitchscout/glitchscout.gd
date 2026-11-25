@@ -479,6 +479,7 @@ func build_manifest() -> Dictionary:
 		var v: Variant = _setting("glitchscout/physics/" + key, null)
 		if v != null:
 			hints[key] = float(v)
+	# observe_defaults.radius is the default as of the handshake: a game on its menu has no player to tell 2D by yet.
 	var m := {
 		"engine": {"name": "godot", "version": Engine.get_version_info().string},
 		"sdk_version": SDK_VERSION,

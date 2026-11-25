@@ -92,9 +92,10 @@ func _walk(node: Node, out: Array[Control], caption: Node = null) -> void:
 		_walk(child, out, caption)
 
 
-## A button's own text: "" for one that has none, such as a TextureButton.
+## A button's own text (a Button's or a LinkButton's): "" for one that has none, such as a TextureButton.
 func _own_text(b: BaseButton) -> String:
-	return b.text if b is Button else ""
+	var t: Variant = b.get("text")
+	return t if t is String else ""
 
 
 ## The first Label or RichTextLabel inside a button, which a player reads as the button's text; null if none.
@@ -170,7 +171,9 @@ func _text(c: Control) -> Variant:
 		var caption := _caption(c)
 		if caption != null:
 			return _text(caption)
-	if c is Button or c is Label or c is LineEdit or c is TextEdit:
+	if c is Button or c is LinkButton:
+		return _own_text(c)
+	if c is Label or c is LineEdit or c is TextEdit:
 		return c.text
 	if c is RichTextLabel:
 		return c.get_parsed_text()

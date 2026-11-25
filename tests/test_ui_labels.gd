@@ -184,3 +184,17 @@ func test_a_button_with_text_keeps_it_and_its_child_label() -> void:
 	var ui := await _ui()
 	assert_str(ui["start"].text).is_equal("Start")
 	assert_str(ui["start_badge"].text).is_equal("New")
+
+
+## A LinkButton isn't a Button but has text of its own, which is its text, ahead of any Label inside it.
+func test_a_link_button_reports_its_own_text() -> void:
+	var credits := _named(LinkButton.new(), "credits") as LinkButton
+	credits.text = "Credits"
+	var badge := _label("New")
+	badge.set_meta("glitchscout_id", "credits_badge")
+	credits.add_child(badge)
+	_row([credits])
+	await _ready_sdk()
+	var ui := await _ui()
+	assert_str(ui["credits"].get("text", "")).is_equal("Credits")
+	assert_bool(ui.has("credits_badge")).is_true()
