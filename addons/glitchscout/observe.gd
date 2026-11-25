@@ -16,7 +16,8 @@ extends RefCounted
 ## interactables and entities whose state, enabled or collision then changes stay in view at any distance
 ## for glitchscout/interaction_delta_ticks ticks (default 120), so what a lever opened far away is seen.
 
-const DEFAULT_RADIUS := 500.0
+const DEFAULT_RADIUS_METRES := 500.0 ## how far an OBSERVE that names no radius sees, in metres (default_radius())
+const UNITS_PER_METER_2D := 32.0 ## a 2D game's metre when the project doesn't say (a 3D game's is 1 unit)
 const DEFAULT_MAX_N := 10000
 const DEFAULT_INTERACTION_TICKS := 120
 const GROUPS := {
@@ -226,7 +227,7 @@ func _state_payload(obs: Dictionary, present: Dictionary, mode: String) -> Dicti
 ## The full observation for a filter (no size cap).
 func observe(filter: Dictionary) -> Dictionary:
 	var sections: Array = filter.get("sections", SECTIONS)
-	var radius := float(filter.get("radius", DEFAULT_RADIUS))
+	var radius := float(filter.get("radius", default_radius()))
 	var max_n := int(filter.get("max_n", DEFAULT_MAX_N))
 	var types: Array = filter.get("entity_types", [])
 	var player := _player_node()
@@ -316,7 +317,24 @@ func entity_named(id: String) -> Dictionary:
 	return {}
 
 
+## How far an OBSERVE that names no radius sees: DEFAULT_RADIUS_METRES in the game's units.
+func default_radius() -> float:
+	return DEFAULT_RADIUS_METRES * units_per_metre(_player_node())
+
+
+## A metre in the game's units: glitchscout/physics/units_per_meter when the project sets it, else
+## UNITS_PER_METER_2D for a 2D game (its player is a Node2D) and 1 for any other. The orchestrator uses the same rule.
+static func units_per_metre(player: Node) -> float:
+	var v: Variant = ProjectSettings.get_setting("glitchscout/physics/units_per_meter", 0.0)
+	var set := float(v) if (v is float or v is int) and is_finite(float(v)) else 0.0
+	if set > 0.0:
+		return set
+	return UNITS_PER_METER_2D if player is Node2D else 1.0
+
+
 func _player_node() -> Node:
+	if not sdk.is_inside_tree():
+		return null
 	var players := sdk.get_tree().get_nodes_in_group("player")
 	return players[0] if not players.is_empty() else null
 

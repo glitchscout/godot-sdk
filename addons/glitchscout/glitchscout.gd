@@ -494,7 +494,7 @@ func build_manifest() -> Dictionary:
 		"limits": {
 			"max_text_frame_bytes": MAX_TEXT_FRAME_BYTES,
 			"max_binary_frame_bytes": MAX_BINARY_FRAME_BYTES,
-			"observe_defaults": {"radius": Observation.DEFAULT_RADIUS, "max_n": Observation.DEFAULT_MAX_N},
+			"observe_defaults": {"radius": _observation.default_radius(), "max_n": Observation.DEFAULT_MAX_N},
 		},
 	}
 	var build_id := str(_setting("application/config/version", ""))

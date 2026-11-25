@@ -23,7 +23,7 @@ Optional project settings:
 | `glitchscout/movement_space` | `camera` | How movement input is interpreted: `camera`, `world` or `screen` |
 | `glitchscout/physics/move_speed` | unset | Player move speed, units per second |
 | `glitchscout/physics/jump_height` | unset | Player jump height, units |
-| `glitchscout/physics/units_per_meter` | unset | World units per meter. Unset, Glitchscout assumes 32 for a 2D game and 1 for a 3D one |
+| `glitchscout/physics/units_per_meter` | unset | World units per meter. Unset, Glitchscout assumes 32 for a 2D game (its player is a `Node2D`) and 1 for a 3D one. Glitchscout sees what's within 500 m of the player |
 | `glitchscout/camera_actions`, `glitchscout/combat_actions` | empty | Input actions that steer the camera or fight |
 | `glitchscout/axes` | empty | Virtual 2D axes Glitchscout can drive with one analog input, `{name: [negative_x, positive_x, negative_y, positive_y]}` in `Input.get_vector` order, e.g. `{"move": ["move_left", "move_right", "move_forward", "move_back"]}` |
 | `glitchscout/step/method` | `hold` | How step mode makes the game wait between steps: `hold` blocks the main loop (nothing in the game runs or notices); `pause` pauses the scene tree instead, for games where blocking doesn't work |
@@ -138,6 +138,21 @@ node path is used). It presses buttons the way a player does, by focusing them a
 when a control can't take focus, and for line edits, which react to real keys only, does it activate the control
 directly; reports flag those activations. UI inside a `SubViewport` is listed, but its rects are in the
 sub-viewport's own pixels, not the screen's.
+
+A button reports its caption as its text, also when the caption is a `Label` or `RichTextLabel` inside it (a
+`TextureButton`, or a `Button` with no text of its own); that caption isn't listed separately.
+
+Sliders, text fields and option buttons have no fixed text of their own: what's typed or selected changes as a
+test runs. They're named by a **label** instead, the first of:
+
+1. the `glitchscout_label` metadata on the control;
+2. its `accessibility_name` (Godot 4.5 and later);
+3. a text field's `placeholder_text`;
+4. the `Label` or `RichTextLabel` just before it in the same parent (the usual "Volume [slider]" row), unless
+   another control comes between them.
+
+Buttons and check boxes get a label only from the first two; their text names them. An option button's open
+list (a `PopupMenu`) isn't listed: tests pick an option by its text or index instead.
 
 ## Input
 

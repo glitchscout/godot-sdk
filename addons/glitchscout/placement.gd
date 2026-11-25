@@ -14,12 +14,12 @@ extends RefCounted
 ## Physics answers in the frame a scene loads; the navigation map doesn't until it has synchronised, and isn't asked
 ## before then.
 
+const Observation := preload("observe.gd")
 const MARKER_GROUP := "glitchscout_marker"
 const DEFAULT_REACH := 2.0 ## metres
 const STANDOFFS: Array[float] = [0.6, 0.3]
 const TURNS: Array[float] = [0.0, 45.0, -45.0, 90.0, -90.0, 135.0, -135.0, 180.0]
 const HAZARD_MARGIN := 0.5 ## how far outside a hazard's radius to stand, in metres
-const UNITS_PER_METER_2D := 32.0 ## what a 2D game's metre is taken to be when it doesn't say (a 3D game's is 1 unit)
 ## The lengths below are in metres too.
 const GROUND_PROBE := 4.0 ## how far under a spot the ground is looked for
 const GROUND_HEADROOM := 0.5 ## and how far above it the look starts
@@ -37,7 +37,7 @@ func _init(owner: Node) -> void:
 ## The position to give the player (a Vector3; z is 0 in 2D), or a String saying why there is none.
 func spot(name: String, player: Node) -> Variant:
 	var three_d := player is Node3D
-	_metre = _units_per_metre(three_d)
+	_metre = Observation.units_per_metre(player)
 	var marker := _marker(name)
 	if marker != null:
 		var at := _position(marker)
@@ -79,14 +79,6 @@ func spot(name: String, player: Node) -> Variant:
 	if best != null:
 		return best
 	return "found nowhere to stand in reach of '%s': add a marker called '%s' (group '%s') where the player should stand" % [name, name, MARKER_GROUP]
-
-
-## A metre in the game's units: glitchscout/physics/units_per_meter, else 1 in 3D and UNITS_PER_METER_2D in 2D.
-func _units_per_metre(three_d: bool) -> float:
-	var set := _number(ProjectSettings.get_setting("glitchscout/physics/units_per_meter", 0.0))
-	if set > 0.0:
-		return set
-	return 1.0 if three_d else UNITS_PER_METER_2D
 
 
 func _marker(name: String) -> Node:
