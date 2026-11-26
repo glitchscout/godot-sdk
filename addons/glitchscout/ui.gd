@@ -7,8 +7,18 @@ extends RefCounted
 ## input bugs, so the ACK says activation "direct" for the trace.
 ##
 ## Element ids come from the "glitchscout_id" metadata when a control has it, else its node path.
+##
+## A slider, text field or dropdown also gets a label, the name a player reads for it (its text is what's typed or
+## selected), from the first of: the "glitchscout_label" metadata; its accessibility_name (Godot 4.5 and later); a
+## text field's placeholder_text; the Label or RichTextLabel before it in its parent, unless another control comes
+## between them. A button or checkbox gets one only from the first two: its text names it.
+##
+## A button with no text of its own (a TextureButton, or a Button with a styled caption inside) reports the text of
+## its first Label or RichTextLabel as its own, and that caption isn't an element of its own. A dropdown's open list
+## (a PopupMenu, which is a Window) isn't walked: tests pick an option with set_value.
 
 const ID_META := "glitchscout_id"
+const LABEL_META := "glitchscout_label"
 
 var sdk: Node
 
@@ -73,11 +83,30 @@ func _controls() -> Array[Control]:
 	return out
 
 
-func _walk(node: Node, out: Array[Control]) -> void:
-	if node is Control and not _type(node).is_empty():
+func _walk(node: Node, out: Array[Control], caption: Node = null) -> void:
+	if node is Control and node != caption and not _type(node).is_empty():
 		out.append(node)
+	if node is BaseButton and not node is OptionButton and _own_text(node).is_empty():
+		caption = _caption(node)
 	for child in node.get_children():
-		_walk(child, out)
+		_walk(child, out, caption)
+
+
+## A button's own text (a Button's or a LinkButton's): "" for one that has none, such as a TextureButton.
+func _own_text(b: BaseButton) -> String:
+	var t: Variant = b.get("text")
+	return t if t is String else ""
+
+
+## The first Label or RichTextLabel inside a button, which a player reads as the button's text; null if none.
+func _caption(node: Node) -> Node:
+	for child in node.get_children():
+		if child is Label or child is RichTextLabel:
+			return child
+		var inner := _caption(child)
+		if inner != null:
+			return inner
+	return null
 
 
 func _find(id: String) -> Control:
@@ -126,6 +155,9 @@ func _element(c: Control) -> Dictionary:
 	var text := _text(c)
 	if text != null:
 		e.text = text
+	var label := _label(c)
+	if not label.is_empty():
+		e.label = label
 	var value: Variant = _value(c)
 	if value != null:
 		e.value = value
@@ -135,11 +167,53 @@ func _element(c: Control) -> Dictionary:
 func _text(c: Control) -> Variant:
 	if c is OptionButton:
 		return c.get_item_text(c.selected) if c.selected >= 0 else ""
-	if c is Button or c is Label or c is LineEdit or c is TextEdit:
+	if c is BaseButton and _own_text(c).is_empty():
+		var caption := _caption(c)
+		if caption != null:
+			return _text(caption)
+	if c is Button or c is LinkButton:
+		return _own_text(c)
+	if c is Label or c is LineEdit or c is TextEdit:
 		return c.text
 	if c is RichTextLabel:
 		return c.get_parsed_text()
 	return null
+
+
+## The name a player reads for a control, "" when it has none (see the top of this file).
+func _label(c: Control) -> String:
+	if c.has_meta(LABEL_META):
+		return str(c.get_meta(LABEL_META))
+	var spoken := _accessible_name(c)
+	if not spoken.is_empty():
+		return spoken
+	if c is BaseButton and not c is OptionButton:
+		return ""
+	if not (c is Slider or c is SpinBox or c is LineEdit or c is TextEdit or c is OptionButton):
+		return ""
+	if (c is LineEdit or c is TextEdit) and not c.placeholder_text.is_empty():
+		return c.placeholder_text
+	return _caption_before(c)
+
+
+## A control's accessibility_name, read by name because the property only exists from Godot 4.5: "" before that.
+func _accessible_name(o: Object) -> String:
+	var v: Variant = o.get("accessibility_name")
+	return str(v) if v is String or v is StringName else ""
+
+
+## The text of the Label or RichTextLabel just before c in its parent, "" if another control comes between them.
+func _caption_before(c: Control) -> String:
+	var parent := c.get_parent()
+	if parent == null:
+		return ""
+	for i in range(c.get_index() - 1, -1, -1):
+		var before := parent.get_child(i)
+		if before is Label or before is RichTextLabel:
+			return str(_text(before)).strip_edges()
+		if before is Control and not _type(before).is_empty():
+			return ""
+	return ""
 
 
 func _value(c: Control) -> Variant:
