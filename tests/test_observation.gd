@@ -262,3 +262,47 @@ func test_an_observation_that_cannot_fit_is_an_error_not_an_oversized_frame() ->
 	var m := await request("OBSERVE", {"sections": ["player"]})
 	assert_str(m.message_type).is_equal("ERROR")
 	assert_str(m.payload.code).is_equal("observation_too_large")
+
+
+## A hold the game itself reports, whether or not the scene has a player: a menu's intro dialogue (GSC-324).
+func test_the_game_reports_its_own_state_flags() -> void:
+	start_sdk()
+	await handshake()
+	sdk.set_state_flag("in_dialogue")
+	sdk.set_state_flag("in_dialogue") # once is enough
+	var obs: Dictionary = (await request("OBSERVE", {})).payload
+	assert_array(obs.get("state_flags", [])).contains_exactly(["in_dialogue"])
+	assert_array(sdk.state_flags()).contains_exactly(["in_dialogue"])
+	var only_ui: Dictionary = (await request("OBSERVE", {"sections": ["ui_elements"]})).payload
+	assert_bool(only_ui.has("state_flags")).is_false()
+	sdk.set_state_flag("in_dialogue", false)
+	var after: Dictionary = (await request("OBSERVE", {"sections": ["state_flags"]})).payload
+	assert_bool(after.has("state_flags")).is_false()
+
+
+func test_a_scene_with_no_player_still_reports_the_games_flags() -> void:
+	level.get_node("Player").free()
+	start_sdk()
+	await handshake()
+	sdk.set_state_flag("in_dialogue")
+	var obs: Dictionary = (await request("OBSERVE", {})).payload
+	assert_bool(obs.has("player")).is_false()
+	assert_array(obs.state_flags).contains_exactly(["in_dialogue"])
+
+
+## A delta carries the whole list when it changed, [] once it's cleared, and nothing while it stays the same.
+func test_a_stream_sends_the_games_flags_when_they_change() -> void:
+	start_sdk()
+	await handshake()
+	sdk.set_state_flag("loading")
+	var ack := await request("OBSERVE", {"sections": ["state_flags"], "stream_hz": 30})
+	assert_str(ack.message_type).is_equal("ACK")
+	assert_bool(await pump_until(func(): return orch.messages("STATE_UPDATE").size() >= 3)).is_true()
+	sdk.set_state_flag("loading", false)
+	var before := orch.messages("STATE_UPDATE").size()
+	assert_bool(await pump_until(func(): return orch.messages("STATE_UPDATE").size() >= before + 3)).is_true()
+	await request("OBSERVE", {"stream_hz": 0})
+	var updates := orch.messages("STATE_UPDATE")
+	assert_array(updates[0].payload.state_flags).contains_exactly(["loading"])
+	var sent := updates.slice(1).filter(func(u): return u.payload.has("state_flags")).map(func(u): return u.payload.state_flags)
+	assert_array(sent).is_equal([[]])

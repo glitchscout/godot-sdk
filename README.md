@@ -188,6 +188,11 @@ event; events sent before the session opens are kept and delivered in order. Lis
 sends in the `glitchscout/events` project setting so Glitchscout knows to expect them. Scene changes are
 reported as `scene_changed` automatically.
 
+When the game itself holds the player, say so with `gs.set_state_flag("in_dialogue")` as the hold starts and
+`gs.set_state_flag("in_dialogue", false)` as it ends. The standard holds are `in_dialogue`, `cutscene`, `loading`
+and `paused`. Observations carry them in `state_flags` whether or not the scene has a player, so an intro dialogue
+over the main menu is seen as one: Glitchscout advances a dialogue, and waits out the other holds, before it acts.
+
 Errors, warnings and printed lines are forwarded as they happen (GDScript and shader errors with their file,
 line and function), up to 200 a frame; a flood beyond that is reported as one "log lines dropped" line.
 

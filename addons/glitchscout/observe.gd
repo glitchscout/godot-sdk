@@ -7,7 +7,8 @@ extends RefCounted
 ##   an interactable also in "glitchscout_collectible" or "glitchscout_pushable" has affordance collect or push;
 ## - threats: group "glitchscout_threat";
 ## - hazards: group "glitchscout_hazard" (glitchscout_observe() must give a radius; damage is optional);
-## - other observable entities: group "glitchscout_observable".
+## - other observable entities: group "glitchscout_observable";
+## - state_flags: the holds the game itself reports with Glitchscout.set_state_flag(), whether or not there's a player.
 ## Each node may define glitchscout_observe() -> Dictionary with its fields ("id" overrides the node path).
 ## The SDK computes distances from the player, sorts by distance, filters by radius, type and max_n, and
 ## truncates by distance to fit the text-frame cap (default 256 KB), flagging truncated: true.
@@ -30,7 +31,7 @@ const AFFORDANCE_GROUPS := {"glitchscout_collectible": "collect", "glitchscout_p
 const AFFORDANCES := ["interact", "collect", "push"]
 const INTERACTABLE_KEYS := ["type", "state", "enabled", "required_action", "interaction_range", "requires"]
 const THREAT_KEYS := ["type", "health", "attack_range", "state"]
-const SECTIONS := ["player", "interactables", "camera", "threats", "hazards", "ui_elements", "entities"]
+const SECTIONS := ["player", "interactables", "camera", "threats", "hazards", "ui_elements", "entities", "state_flags"]
 const WATCHED := ["state", "enabled", "collision"] ## facts an interaction can change
 const WATCHED_SECTIONS := ["interactables", "entities"]
 const NON_FINITE_FLAG := "non_finite" ## on the player: some value in this observation was NaN or infinite
@@ -43,6 +44,7 @@ var _stream_due := 0
 var _streamed := false
 var _last_states := {} ## interactable id -> state at the last STATE_UPDATE
 var _last_hazards := {} ## hazard ids at the last STATE_UPDATE
+var _last_flags: Array = [] ## the game's state flags at the last STATE_UPDATE
 var _warned_too_large := false
 var _warned_hazard := false
 var _window_until := -1 ## last tick of the post-interaction window
@@ -188,11 +190,14 @@ func _state_payload(obs: Dictionary, present: Dictionary, mode: String) -> Dicti
 	for k in ["player", "camera", "threats", "hazards", "ui_elements", "truncated"]:
 		if obs.has(k):
 			p[k] = obs[k]
+	var flags: Array = obs.get("state_flags", [])
 	if mode == "full":
-		for k in ["interactables", "entities"]:
+		for k in ["interactables", "entities", "state_flags"]:
 			if obs.has(k):
 				p[k] = obs[k]
 	else:
+		if flags != _last_flags: # never diffed: the whole list, [] once it's cleared
+			p.state_flags = flags
 		var removed := {}
 		var gone: Array = _last_states.keys().filter(func(id): return not current.has(id))
 		if not gone.is_empty():
@@ -220,6 +225,7 @@ func _state_payload(obs: Dictionary, present: Dictionary, mode: String) -> Dicti
 			p.entities = effects
 	_last_states = current
 	_last_hazards = hazards
+	_last_flags = flags
 	_last_effects = _effects.duplicate()
 	return p
 
@@ -242,6 +248,8 @@ func observe(filter: Dictionary) -> Dictionary:
 			obs.camera = cam
 	if "ui_elements" in sections:
 		obs.ui_elements = sdk.ui_elements()
+	if "state_flags" in sections and not sdk.state_flags().is_empty():
+		obs.state_flags = sdk.state_flags()
 	_effects = {}
 	for section in GROUPS:
 		if not section in sections:

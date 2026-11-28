@@ -98,6 +98,7 @@ var outbound_buffer_bytes := OUTBOUND_BUFFER_BYTES
 var frame_send_timeout_ms := 2000
 var _outbox: Array[Dictionary] = [] ## messages waiting for room in the send buffer: {messages, binary, next, done, deadline}
 var _reset_handler := Callable()
+var _state_flags: Array[String] = [] ## the holds the game reports itself (set_state_flag)
 
 
 func _init() -> void:
@@ -244,6 +245,22 @@ static func should_enable(endpoint: String, debug: bool, qa: bool) -> bool:
 ## gs = get_node_or_null("/root/Glitchscout"), so the game still runs in a build without the SDK.
 func event(name: String, data := {}) -> void:
 	_events.event(name, data)
+
+
+## Says the game itself is holding the player while on is true: flag is one of the standard holds in_dialogue,
+## cutscene, loading or paused, or a flag of the game's own. Observations carry the flags set in state_flags, whether
+## or not the scene has a player, so an intro dialogue over the main menu is seen as one. Call it as the hold starts
+## and ends, e.g. gs.set_state_flag("in_dialogue", false) when the dialogue closes.
+func set_state_flag(flag: String, on := true) -> void:
+	if on and not flag in _state_flags:
+		_state_flags.append(flag)
+	elif not on:
+		_state_flags.erase(flag)
+
+
+## The flags set_state_flag has set, in the order they were set.
+func state_flags() -> Array[String]:
+	return _state_flags.duplicate()
 
 
 ## The Logger forwarding Godot's log output (null on Godot versions without one).
